@@ -33,7 +33,7 @@ Three files carry the whole backend:
 
 - `app/models.py` — SQLAlchemy models: `User`, `Strategy`, `Trade`.
 - `app/ai.py` — the two-pass Groq pipeline that turns a screenshot into a judged trade.
-- `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /users/{user_id}/dashboard` (discipline score + streak).
+- `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /users/{user_id}/dashboard` (discipline score + streak), and `POST`/`GET`/`PATCH /strategies` (rulebook management).
 
 ### Data model shape (`app/models.py`)
 
@@ -94,7 +94,25 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   an off-plan trade as 0% rule compliance — same "no rules followed" logic as the
   off-plan branch in `POST /trades`. A streak is unbroken only while every trade in it
   passed *all* of its own rules; one off-plan trade or one failed rule resets it to the
-  point after that trade.
+  point after that trade. The response echoes the window size as
+  `discipline_window_trades` so the frontend can label the score correctly — it's a
+  trade-count window, not a calendar window ("last 20 trades", not "30 days").
+
+### Strategy management (`app/main.py`)
+
+- `POST /strategies` — create, with an initial `rules` list (`{"text": str}`, no `id`
+  needed). `GET /strategies?user_id=&is_active=` — list, optionally filtered to
+  active/inactive. `PATCH /strategies/{id}` — partial update (name, description,
+  direction_bias, is_active, rules); every request body carries `user_id` and gets a 404
+  if it doesn't own the strategy, same ownership check `POST /trades` already does.
+- Rule ids are assigned by the server and never renumbered (`_apply_rule_updates`): a
+  `PATCH` rule entry with an `id` matching an existing rule updates that rule's text
+  in place; an entry with no `id` (or an unrecognized one) is treated as new and gets
+  the next unused id; omitting a rule entry drops it. This matters because
+  `Trade.rule_results` and the rule-checker key off rule id — deactivating and
+  recreating ids on every edit would silently break that link to trade history.
+- There's no hard delete — deactivate via `PATCH .../is_active=false` instead, matching
+  the model's existing soft-delete field.
 
 ## Conventions worth knowing
 

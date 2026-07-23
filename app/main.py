@@ -15,10 +15,15 @@ strategy — "matched nothing" is stored as nothing.
 GET /trades and GET /users/{user_id}/dashboard read that history back:
 a filterable trade list, and the rolling discipline score + rule-adherence
 streak the dashboard renders.
+
+POST/GET/PATCH /strategies manage the rulebooks trades get checked against.
+Rule ids are stable across edits — see _apply_rule_updates — because
+Trade.rule_results and any future per-rule stats are keyed on them.
 """
 
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -63,6 +68,63 @@ def compute_streak(recent_trades: list[Trade]) -> int:
             break
         streak += 1
     return streak
+
+
+class RuleIn(BaseModel):
+    id: int | None = None
+    text: str
+
+
+class StrategyCreate(BaseModel):
+    user_id: int
+    name: str
+    description: str | None = None
+    direction_bias: str | None = None
+    rules: list[RuleIn] = []
+
+
+class StrategyUpdate(BaseModel):
+    user_id: int
+    name: str | None = None
+    description: str | None = None
+    direction_bias: str | None = None
+    is_active: bool | None = None
+    rules: list[RuleIn] | None = None
+
+
+def _apply_rule_updates(existing_rules: list[dict], rule_updates: list[RuleIn]) -> list[dict]:
+    """Merge incoming rule edits onto existing rules, keeping ids stable.
+
+    An update entry whose id matches an existing rule keeps that id (only its
+    text changes). An entry with no id, or an id that doesn't match any
+    existing rule, is a new rule and gets the next unused id. Ids are never
+    reused or renumbered, and omitting a rule drops it — the rule-checker and
+    a trade's stored rule_results reference rules by id, so a stable id is
+    what keeps that history meaningful across edits.
+    """
+    existing_ids = {r["id"] for r in existing_rules}
+    next_id = max(existing_ids, default=0) + 1
+    merged = []
+    for u in rule_updates:
+        if u.id is not None and u.id in existing_ids:
+            merged.append({"id": u.id, "text": u.text})
+        else:
+            merged.append({"id": next_id, "text": u.text})
+            next_id += 1
+    return merged
+
+
+def _strategy_out(strategy: Strategy) -> dict:
+    return {
+        "id": strategy.id,
+        "user_id": strategy.user_id,
+        "name": strategy.name,
+        "description": strategy.description,
+        "direction_bias": strategy.direction_bias,
+        "rules": strategy.rules,
+        "is_active": strategy.is_active,
+        "created_at": strategy.created_at,
+    }
 
 
 @app.post("/trades")
@@ -196,6 +258,62 @@ def get_dashboard(user_id: int):
             "user_id": user.id,
             "xp": user.xp,
             "discipline_score": discipline_score,
+            "discipline_window_trades": DISCIPLINE_WINDOW,
             "current_streak": streak,
             "trades_logged": len(recent_trades),
         }
+
+
+@app.post("/strategies")
+def create_strategy(payload: StrategyCreate):
+    with Session(engine) as s:
+        user = s.get(User, payload.user_id)
+        if user is None:
+            raise HTTPException(404, "User not found")
+
+        strategy = Strategy(
+            user_id=payload.user_id,
+            name=payload.name,
+            description=payload.description,
+            direction_bias=payload.direction_bias,
+            rules=_apply_rule_updates([], payload.rules),
+        )
+        s.add(strategy)
+        s.commit()
+        s.refresh(strategy)
+        return _strategy_out(strategy)
+
+
+@app.get("/strategies")
+def list_strategies(user_id: int, is_active: bool | None = None):
+    with Session(engine) as s:
+        query = select(Strategy).where(Strategy.user_id == user_id)
+        if is_active is not None:
+            query = query.where(Strategy.is_active == is_active)
+        query = query.order_by(Strategy.created_at.desc())
+
+        strategies = s.scalars(query).all()
+        return [_strategy_out(st) for st in strategies]
+
+
+@app.patch("/strategies/{strategy_id}")
+def update_strategy(strategy_id: int, payload: StrategyUpdate):
+    with Session(engine) as s:
+        strategy = s.get(Strategy, strategy_id)
+        if strategy is None or strategy.user_id != payload.user_id:
+            raise HTTPException(404, "Strategy not found for this user")
+
+        if payload.name is not None:
+            strategy.name = payload.name
+        if payload.description is not None:
+            strategy.description = payload.description
+        if payload.direction_bias is not None:
+            strategy.direction_bias = payload.direction_bias
+        if payload.is_active is not None:
+            strategy.is_active = payload.is_active
+        if payload.rules is not None:
+            strategy.rules = _apply_rule_updates(strategy.rules, payload.rules)
+
+        s.commit()
+        s.refresh(strategy)
+        return _strategy_out(strategy)
