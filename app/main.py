@@ -11,11 +11,15 @@ Flow:
 
 Off-plan is represented by strategy_id = None. The app cannot invent a
 strategy — "matched nothing" is stored as nothing.
+
+GET /trades and GET /users/{user_id}/dashboard read that history back:
+a filterable trade list, and the rolling discipline score + rule-adherence
+streak the dashboard renders.
 """
 
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models import Base, User, Strategy, Trade
@@ -24,6 +28,41 @@ from app import ai
 engine = create_engine("sqlite:///journal.db")
 Base.metadata.create_all(engine)
 app = FastAPI(title="Trade Discipline Journal")
+
+# Rolling window for the discipline score, flat v1 like ai.XP_PER_RULE.
+DISCIPLINE_WINDOW = 20
+
+
+def _trade_compliance(trade: Trade) -> float:
+    """Fraction of a trade's own rules it followed. Off-plan trades followed none."""
+    if trade.is_off_plan or trade.rules_total == 0:
+        return 0.0
+    return trade.rules_passed / trade.rules_total
+
+
+def compute_discipline_score(recent_trades: list[Trade]) -> int:
+    """Rolling 0-100 score over the most recent DISCIPLINE_WINDOW trades.
+
+    recent_trades must be ordered most-recent first.
+    """
+    window = recent_trades[:DISCIPLINE_WINDOW]
+    if not window:
+        return 0
+    return round(100 * sum(_trade_compliance(t) for t in window) / len(window))
+
+
+def compute_streak(recent_trades: list[Trade]) -> int:
+    """Count of consecutive most-recent trades that fully followed their own rules.
+
+    Off-plan trades and any failed rule break the streak. recent_trades must be
+    ordered most-recent first.
+    """
+    streak = 0
+    for t in recent_trades:
+        if t.is_off_plan or t.rules_total == 0 or t.rules_passed != t.rules_total:
+            break
+        streak += 1
+    return streak
 
 
 @app.post("/trades")
@@ -95,4 +134,68 @@ async def log_trade(
             "rules_total": trade.rules_total,
             "coach_note": trade.coach_note,
             "xp_earned": trade.xp_earned,
+        }
+
+
+@app.get("/trades")
+def list_trades(
+    user_id: int,
+    strategy_id: int | None = None,
+    direction: str | None = None,
+):
+    with Session(engine) as s:
+        query = select(Trade).where(Trade.user_id == user_id)
+        if strategy_id is not None:
+            query = query.where(Trade.strategy_id == strategy_id)
+        if direction is not None:
+            query = query.where(Trade.direction == direction)
+        query = query.order_by(Trade.created_at.desc())
+
+        trades = s.scalars(query).all()
+
+        return [
+            {
+                "id": t.id,
+                "strategy_id": t.strategy_id,
+                "instrument": t.instrument,
+                "direction": t.direction,
+                "r_multiple": t.r_multiple,
+                "is_off_plan": t.is_off_plan,
+                "rules_passed": t.rules_passed,
+                "rules_total": t.rules_total,
+                "xp_earned": t.xp_earned,
+                "coach_note": t.coach_note,
+                "created_at": t.created_at,
+            }
+            for t in trades
+        ]
+
+
+@app.get("/users/{user_id}/dashboard")
+def get_dashboard(user_id: int):
+    with Session(engine) as s:
+        user = s.get(User, user_id)
+        if user is None:
+            raise HTTPException(404, "User not found")
+
+        recent_trades = s.scalars(
+            select(Trade)
+            .where(Trade.user_id == user_id)
+            .order_by(Trade.created_at.desc())
+        ).all()
+
+        discipline_score = compute_discipline_score(recent_trades)
+        streak = compute_streak(recent_trades)
+
+        # discipline_score is a stored, recomputed field (see models.py) —
+        # keep it in sync with every dashboard read.
+        user.discipline_score = discipline_score
+        s.commit()
+
+        return {
+            "user_id": user.id,
+            "xp": user.xp,
+            "discipline_score": discipline_score,
+            "current_streak": streak,
+            "trades_logged": len(recent_trades),
         }
