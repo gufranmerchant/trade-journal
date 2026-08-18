@@ -19,6 +19,9 @@ streak the dashboard renders.
 POST/GET/PATCH /strategies manage the rulebooks trades get checked against.
 Rule ids are stable across edits — see _apply_rule_updates — because
 Trade.rule_results and any future per-rule stats are keyed on them.
+
+POST /users creates the user row everything else hangs off of (email must
+be unique) — there's no auth yet, so this is just enough to seed data.
 """
 
 from datetime import datetime
@@ -68,6 +71,11 @@ def compute_streak(recent_trades: list[Trade]) -> int:
             break
         streak += 1
     return streak
+
+
+class UserCreate(BaseModel):
+    email: str
+    display_name: str | None = None
 
 
 class RuleIn(BaseModel):
@@ -125,6 +133,27 @@ def _strategy_out(strategy: Strategy) -> dict:
         "is_active": strategy.is_active,
         "created_at": strategy.created_at,
     }
+
+
+@app.post("/users")
+def create_user(payload: UserCreate):
+    with Session(engine) as s:
+        existing = s.scalar(select(User).where(User.email == payload.email))
+        if existing is not None:
+            raise HTTPException(409, "A user with this email already exists")
+
+        user = User(email=payload.email, display_name=payload.display_name)
+        s.add(user)
+        s.commit()
+        s.refresh(user)
+
+        return {
+            "id": user.id,
+            "email": user.email,
+            "display_name": user.display_name,
+            "xp": user.xp,
+            "discipline_score": user.discipline_score,
+        }
 
 
 @app.post("/trades")
