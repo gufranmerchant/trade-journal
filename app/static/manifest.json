@@ -1,0 +1,18 @@
+{
+  "name": "Trade Discipline Journal",
+  "short_name": "Journal",
+  "description": "A discipline coach for prop/funded-challenge traders.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F1EFE8",
+  "theme_color": "#1D9E75",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

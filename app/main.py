@@ -25,7 +25,10 @@ be unique) — there's no auth yet, so this is just enough to seed data.
 """
 
 from datetime import datetime
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -36,6 +39,17 @@ from app import ai
 engine = create_engine("sqlite:///journal.db")
 Base.metadata.create_all(engine)
 app = FastAPI(title="Trade Discipline Journal")
+
+# Plain HTML/CSS/JS frontend, no build step — served as static files so it
+# can become a PWA later without changing how it's hosted. Mounted under
+# /static (not "/") to keep it unambiguous alongside the API routes below.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    return FileResponse(STATIC_DIR / "index.html")
 
 # Rolling window for the discipline score, flat v1 like ai.XP_PER_RULE.
 DISCIPLINE_WINDOW = 20

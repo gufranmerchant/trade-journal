@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Journal</title>
+  <meta name="theme-color" content="#1D9E75">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon.svg">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Journal</span>
+      </div>
+      <div class="avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21a8 8 0 0 0-16 0"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="hero card">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 176 176">
+            <circle class="ring-track" cx="88" cy="88" r="76"></circle>
+            <circle class="ring-progress" id="ringProgress" cx="88" cy="88" r="76"></circle>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-value" id="disciplineValue">0</span>
+            <span class="ring-label">discipline</span>
+          </div>
+        </div>
+
+        <div class="hero-meta">
+          <div class="level-badge" id="levelBadge">Lv 1 · Rookie</div>
+          <div class="streak">
+            <span class="flame">🔥</span>
+            <b id="streakValue">0</b>&nbsp;rule streak
+          </div>
+        </div>
+
+        <div class="xp-bar-wrap">
+          <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+          <div class="xp-caption" id="xpCaption">0 / 100 XP to next level</div>
+        </div>
+      </section>
+
+      <section class="stats-row">
+        <div class="stat-card card">
+          <div class="stat-label">Rules followed</div>
+          <div class="stat-value" id="rulesFollowed">0/0</div>
+        </div>
+        <div class="stat-card card">
+          <div class="stat-label">Net P&amp;L · 30d</div>
+          <div class="stat-value" id="netPnl">0R</div>
+        </div>
+      </section>
+
+      <nav class="filters" id="filters" aria-label="Filter trades"></nav>
+
+      <section class="trade-list" id="tradeList" aria-live="polite"></section>
+    </main>
+
+    <div class="cta-wrap">
+      <button class="cta-button" id="logTradeBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+        Log trade from screenshot
+      </button>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
