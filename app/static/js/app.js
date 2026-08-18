@@ -51,9 +51,10 @@
   }
 
   function fmtUsd(value) {
-    const n = Number(value);
+    if (value === null || value === undefined) return null;
+    const n = Math.round(Number(value));
     const sign = n > 0 ? "+" : n < 0 ? "-" : "";
-    return `${sign}$${Math.abs(n).toFixed(2)}`;
+    return `${sign}$${Math.abs(n)}`;
   }
 
   function levelFromXp(xp) {
@@ -96,28 +97,29 @@
     el("xpCaption").textContent = `${intoLevel} / ${XP_PER_LEVEL} XP to next level`;
   }
 
-  function renderStats(dashboard, trades) {
-    const window_ = trades.slice(0, dashboard.discipline_window_trades);
-    const passed = window_.reduce((sum, t) => sum + (t.rules_passed || 0), 0);
-    const total = window_.reduce((sum, t) => sum + (t.rules_total || 0), 0);
+  // Both cards describe exactly the trades currently visible below — whatever
+  // the active filter chip scopes them to. The discipline ring is the one
+  // global, unfiltered number on this page; these two react to filters.
+  function renderStats(trades, filterLabel) {
+    const passed = trades.reduce((sum, t) => sum + (t.rules_passed || 0), 0);
+    const total = trades.reduce((sum, t) => sum + (t.rules_total || 0), 0);
     el("rulesFollowed").textContent = `${passed}/${total}`;
 
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const windowTrades = trades.filter(
-      (t) => t.created_at && new Date(t.created_at).getTime() >= cutoff
+    el("netPnlLabel").textContent =
+      filterLabel === "All" ? "Net P&L" : `Net P&L · ${filterLabel}`;
+
+    // R is always shown — it's the discipline unit and every trade has one.
+    // Dollars are supplementary: summed from whichever trades have a
+    // pnl_usd, and only shown alongside R when at least one of them does.
+    const netR = trades.reduce((sum, t) => sum + (Number(t.r_multiple) || 0), 0);
+    const usdTrades = trades.filter(
+      (t) => t.pnl_usd !== null && t.pnl_usd !== undefined
     );
 
-    // r_multiple stays the primary discipline unit; dollars are shown only
-    // when every trade in the window has one, so the total isn't a mix of units.
-    const hasFullPnlUsd =
-      windowTrades.length > 0 &&
-      windowTrades.every((t) => t.pnl_usd !== null && t.pnl_usd !== undefined);
-
-    if (hasFullPnlUsd) {
-      const netUsd = windowTrades.reduce((sum, t) => sum + Number(t.pnl_usd), 0);
-      el("netPnl").textContent = fmtUsd(netUsd);
+    if (usdTrades.length > 0) {
+      const netUsd = usdTrades.reduce((sum, t) => sum + Number(t.pnl_usd), 0);
+      el("netPnl").textContent = `${fmtUsd(netUsd)} · ${fmtR(netR)}`;
     } else {
-      const netR = windowTrades.reduce((sum, t) => sum + (Number(t.r_multiple) || 0), 0);
       el("netPnl").textContent = fmtR(netR);
     }
   }
@@ -141,7 +143,7 @@
 
     function apply() {
       const chip = chips.find((c) => c.key === active) || chips[0];
-      onChange(trades.filter(chip.test));
+      onChange(trades.filter(chip.test), chip.label);
     }
 
     chips.forEach((chip) => {
@@ -213,6 +215,7 @@
     trades.forEach((trade) => {
       const { cls, svg } = tradeIcon(trade);
       const strategyName = trade.strategy_id ? strategyById.get(trade.strategy_id) : null;
+      const hasUsd = trade.pnl_usd !== null && trade.pnl_usd !== undefined;
 
       const row = document.createElement("div");
       row.className = "trade-row card";
@@ -222,7 +225,10 @@
           <div class="trade-title">${trade.instrument || "Unknown"} <span class="dir">${trade.direction || ""}</span></div>
           <div class="trade-sub">${tradeSub(trade, strategyName)}</div>
         </div>
-        <div class="trade-r">${fmtR(trade.r_multiple)}</div>
+        <div class="trade-r">
+          <span class="trade-r-primary">${fmtR(trade.r_multiple)}</span>
+          ${hasUsd ? `<span class="trade-r-usd">${fmtUsd(trade.pnl_usd)}</span>` : ""}
+        </div>
       `;
       container.appendChild(row);
     });
@@ -255,11 +261,13 @@
     }
 
     renderHero(dashboard);
-    renderStats(dashboard, trades);
 
     const strategyById = new Map(strategies.map((s) => [s.id, s.name]));
 
-    buildFilters(strategies, trades, (filtered) => renderTradeList(filtered, strategyById));
+    buildFilters(strategies, trades, (filtered, filterLabel) => {
+      renderStats(filtered, filterLabel);
+      renderTradeList(filtered, strategyById);
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);

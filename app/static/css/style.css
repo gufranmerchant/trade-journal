@@ -369,10 +369,24 @@ button {
 .trade-sub .rules-offplan { color: var(--coral); font-weight: 700; }
 
 .trade-r {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.trade-r-primary {
   font-size: 15px;
   font-weight: 800;
-  flex-shrink: 0;
   color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.trade-r-usd {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* ---------- Empty states ---------- */
