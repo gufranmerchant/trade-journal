@@ -10,8 +10,10 @@ judges it against the **user's own** strategy rules (defined at onboarding — n
 preset). It is a discipline coach, not a trading-advice tool: a winning trade that broke
 a rule still fails that rule.
 
-Status: backend core only (data model, two-pass AI pipeline, `POST /trades`). No
-dashboard endpoints, onboarding, frontend, or auth yet.
+Status: backend (data model, two-pass AI pipeline, trade/dashboard/strategy endpoints)
+plus a static dashboard frontend (`app/static/`). No onboarding flow, screenshot-upload
+UI, or auth yet — the dashboard reads live data, but logging a trade still requires
+calling `POST /trades` directly (the "Log trade from screenshot" button is a placeholder).
 
 ## Commands
 
@@ -22,18 +24,21 @@ cp .env.example .env        # then paste a real GROQ_API_KEY into .env
 uvicorn app.main:app --reload
 ```
 
-Interactive API docs at http://127.0.0.1:8000/docs (only real way to exercise the API
-right now — there is no test suite, linter, or frontend in the repo).
+The dashboard frontend is served at http://127.0.0.1:8000/ (`app/static/`, no build
+step). Interactive API docs at http://127.0.0.1:8000/docs are still the only way to
+exercise endpoints the frontend doesn't cover (`POST /trades`, `POST`/`PATCH
+/strategies`, `POST /users`).
 
 No test/lint/build tooling is configured yet — don't assume `pytest`, `ruff`, etc. exist.
 
 ## Architecture
 
-Three files carry the whole backend:
+Three files carry the whole backend, plus a static frontend:
 
 - `app/models.py` — SQLAlchemy models: `User`, `Strategy`, `Trade`.
 - `app/ai.py` — the two-pass Groq pipeline that turns a screenshot into a judged trade.
-- `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /users/{user_id}/dashboard` (discipline score + streak), and `POST`/`GET`/`PATCH /strategies` (rulebook management).
+- `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /users/{user_id}/dashboard` (discipline score + streak), `POST`/`GET`/`PATCH /strategies` (rulebook management); also mounts `app/static/` at `/static` and serves `app/static/index.html` at `/`.
+- `app/static/` — the dashboard frontend: `index.html` + `css/style.css` + `js/app.js`. No framework, no build step.
 
 ### Data model shape (`app/models.py`)
 
@@ -113,6 +118,27 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   recreating ids on every edit would silently break that link to trade history.
 - There's no hard delete — deactivate via `PATCH .../is_active=false` instead, matching
   the model's existing soft-delete field.
+
+### Frontend (`app/static/`)
+
+- Plain HTML/CSS/JS, no build step, no framework — `app/static/js/app.js` does direct
+  DOM rendering. This is deliberate (see the comment at the top of `main.py`): it's
+  mounted under `/static` rather than served as raw files off `/` so it can become a PWA
+  later without changing how the API is hosted.
+- No auth yet, so the active user comes from `?user_id=` in the URL, falling back to
+  `localStorage`, falling back to user `1`. Swap this for real login later.
+- On load, `app.js` fetches `GET /users/{id}/dashboard`, `GET /trades`, and
+  `GET /strategies?is_active=true` in parallel and renders: the discipline ring, XP
+  bar/level, rule streak, "Rules followed" and "Net P&L · 30d" stat tiles, strategy/
+  direction filter chips, and the trade list. If the user doesn't exist yet, it shows a
+  load-error state pointing at `POST /users`.
+- "Net P&L · 30d" prefers dollars (`Trade.pnl_usd`, summed) but only when *every* trade
+  in the 30-day window has one — otherwise it falls back to summing `r_multiple`, same as
+  before `pnl_usd` existed. `r_multiple` stays the actual discipline unit everywhere else
+  (trade rows, filters); dollars are supplementary display only.
+- The "Log trade from screenshot" CTA and the "+" (new strategy) filter chip are both
+  placeholders (`window.alert`) — screenshot upload and in-app strategy creation aren't
+  wired up yet; use `POST /trades` / `POST /strategies` via `/docs` for those.
 
 ## Conventions worth knowing
 

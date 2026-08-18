@@ -198,6 +198,7 @@ async def log_trade(
             exit_price=parsed.get("exit_price"),
             risk_pct=parsed.get("risk_pct"),
             r_multiple=parsed.get("r_multiple"),
+            pnl_usd=parsed.get("pnl_usd"),
             session=parsed.get("session"),
             context_note=context_note,
         )
@@ -233,6 +234,7 @@ async def log_trade(
             "instrument": trade.instrument,
             "direction": trade.direction,
             "r_multiple": trade.r_multiple,
+            "pnl_usd": trade.pnl_usd,
             "is_off_plan": trade.is_off_plan,
             "rule_results": trade.rule_results,
             "rules_passed": trade.rules_passed,
@@ -265,6 +267,7 @@ def list_trades(
                 "instrument": t.instrument,
                 "direction": t.direction,
                 "r_multiple": t.r_multiple,
+                "pnl_usd": t.pnl_usd,
                 "is_off_plan": t.is_off_plan,
                 "rules_passed": t.rules_passed,
                 "rules_total": t.rules_total,

@@ -55,6 +55,7 @@ no code fences, with exactly these keys:
   "exit_price": number or null,
   "risk_pct": number or null,
   "r_multiple": number or null,
+  "pnl_usd": number or null,
   "session": string or null,
   "traded_at": string or null
 }

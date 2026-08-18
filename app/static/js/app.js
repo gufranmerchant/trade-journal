@@ -50,6 +50,12 @@
     return `${sign}${n.toFixed(1)}R`;
   }
 
+  function fmtUsd(value) {
+    const n = Number(value);
+    const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+    return `${sign}$${Math.abs(n).toFixed(2)}`;
+  }
+
   function levelFromXp(xp) {
     const level = Math.floor(xp / XP_PER_LEVEL) + 1;
     const title = LEVEL_TITLES[Math.min(level, LEVEL_TITLES.length) - 1];
@@ -97,10 +103,23 @@
     el("rulesFollowed").textContent = `${passed}/${total}`;
 
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const netR = trades
-      .filter((t) => t.created_at && new Date(t.created_at).getTime() >= cutoff)
-      .reduce((sum, t) => sum + (Number(t.r_multiple) || 0), 0);
-    el("netPnl").textContent = fmtR(netR);
+    const windowTrades = trades.filter(
+      (t) => t.created_at && new Date(t.created_at).getTime() >= cutoff
+    );
+
+    // r_multiple stays the primary discipline unit; dollars are shown only
+    // when every trade in the window has one, so the total isn't a mix of units.
+    const hasFullPnlUsd =
+      windowTrades.length > 0 &&
+      windowTrades.every((t) => t.pnl_usd !== null && t.pnl_usd !== undefined);
+
+    if (hasFullPnlUsd) {
+      const netUsd = windowTrades.reduce((sum, t) => sum + Number(t.pnl_usd), 0);
+      el("netPnl").textContent = fmtUsd(netUsd);
+    } else {
+      const netR = windowTrades.reduce((sum, t) => sum + (Number(t.r_multiple) || 0), 0);
+      el("netPnl").textContent = fmtR(netR);
+    }
   }
 
   function buildFilters(strategies, trades, onChange) {

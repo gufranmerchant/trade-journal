@@ -85,6 +85,7 @@ class Trade(Base):
     exit_price = Column(Float)
     risk_pct = Column(Float)
     r_multiple = Column(Float)                       # +2.1, -1.0
+    pnl_usd = Column(Float)                           # +184.50, -92.00 — supplementary, null if not visible
     session = Column(String)                         # "London open"
     traded_at = Column(DateTime)
 
