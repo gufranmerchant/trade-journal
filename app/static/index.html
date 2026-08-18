@@ -12,7 +12,7 @@
 </head>
 <body>
   <div class="app">
-    <header class="topbar">
+    <header class="topbar" id="homeTopbar">
       <div class="brand">
         <span class="brand-dot"></span>
         <span class="brand-name">Journal</span>
@@ -25,7 +25,18 @@
       </div>
     </header>
 
-    <main class="content">
+    <header class="topbar hidden" id="logTopbar">
+      <button class="icon-button" id="logBackBtn" type="button" aria-label="Back to dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </button>
+      <span class="topbar-title">Log Trade</span>
+      <span class="topbar-spacer" aria-hidden="true"></span>
+    </header>
+
+    <main class="content" id="homeView">
       <section class="hero card">
         <div class="ring-wrap">
           <svg class="ring" viewBox="0 0 176 176">
@@ -68,7 +79,99 @@
       <section class="trade-list" id="tradeList" aria-live="polite"></section>
     </main>
 
-    <div class="cta-wrap">
+    <main class="content hidden" id="logView">
+      <section class="log-form" id="logFormView">
+        <div class="field-block">
+          <label class="field-label" id="screenshotLabel">Screenshot</label>
+          <div class="dropzone" id="dropzone" role="group" aria-labelledby="screenshotLabel">
+            <input type="file" id="screenshotInput" accept="image/*" hidden>
+            <div class="dropzone-empty" id="dropzoneEmpty">
+              <div class="dropzone-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+              </div>
+              <p class="dropzone-title">Tap to choose a screenshot</p>
+              <p class="dropzone-hint">or drag and drop</p>
+            </div>
+            <div class="dropzone-preview hidden" id="dropzonePreview">
+              <img id="previewImg" alt="Trade screenshot preview">
+              <button type="button" class="dropzone-remove" id="removeScreenshotBtn" aria-label="Remove screenshot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label" for="contextNote">Context <span class="field-optional">(optional)</span></label>
+          <input type="text" id="contextNote" class="text-input" maxlength="200"
+                 placeholder="One line about this trade — e.g. waited for the retest before entering">
+        </div>
+
+        <div class="field-block">
+          <label class="field-label" id="strategyLabel">Strategy</label>
+          <div class="strategy-picker" id="strategyPicker" role="group" aria-labelledby="strategyLabel"></div>
+        </div>
+
+        <div class="error-banner hidden" id="logErrorBanner" role="alert">
+          <span id="logErrorText"></span>
+        </div>
+
+        <button type="button" class="cta-button" id="submitTradeBtn" disabled>Analyze trade</button>
+      </section>
+
+      <section class="loading-state hidden" id="logLoadingView" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="loading-title">Reading your screenshot…</p>
+        <p class="loading-hint">Checking it against your rules — this takes a few seconds.</p>
+      </section>
+
+      <section class="result-state hidden" id="logResultView" aria-live="polite">
+        <div class="result-header">
+          <div class="trade-icon" id="resultIcon"></div>
+          <div class="result-header-text">
+            <div class="result-title" id="resultTitle"></div>
+            <div class="result-sub" id="resultSub"></div>
+          </div>
+        </div>
+
+        <div class="result-figures">
+          <span class="result-r" id="resultR"></span>
+          <span class="result-usd hidden" id="resultUsd"></span>
+        </div>
+
+        <div class="offplan-banner hidden" id="offplanBanner">
+          <div class="offplan-banner-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 22V4"></path>
+              <path d="M4 4h13l-2 4 2 4H4"></path>
+            </svg>
+          </div>
+          <p id="offplanBannerText"></p>
+        </div>
+
+        <div class="rule-list hidden" id="ruleList"></div>
+
+        <span class="xp-earned-badge hidden" id="xpEarnedBadge"></span>
+
+        <div class="coach-note card hidden" id="coachNoteCard">
+          <div class="coach-note-label">Coach note</div>
+          <p id="coachNoteText"></p>
+        </div>
+
+        <div class="result-actions">
+          <button type="button" class="secondary-button" id="logAnotherBtn">Log another trade</button>
+          <button type="button" class="cta-button" id="logDoneBtn">Done</button>
+        </div>
+      </section>
+    </main>
+
+    <div class="cta-wrap" id="homeCta">
       <button class="cta-button" id="logTradeBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>

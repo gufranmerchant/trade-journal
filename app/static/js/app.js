@@ -1,6 +1,8 @@
 /* Home dashboard — pulls GET /users/{id}/dashboard, GET /trades and
    GET /strategies, then renders the ring, stats, filter chips and
-   trade list. No build step, no framework: plain DOM rendering. */
+   trade list. Also drives the "Log trade from screenshot" screen,
+   which POSTs to /trades and renders the parsed + judged result.
+   No build step, no framework: plain DOM rendering, one page. */
 
 (() => {
   "use strict";
@@ -20,12 +22,32 @@
     "Rookie", "Trainee", "Disciplined", "Operator",
     "Strategist", "Veteran", "Elite", "Master",
   ];
+  const OFFPLAN_VALUE = "offplan";
 
   const el = (id) => document.getElementById(id);
 
   const iconArrowUp = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>`;
   const iconArrowDown = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M16 17H7V8"/></svg>`;
   const iconFlagOff = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h13l-2 4 2 4H4"/></svg>`;
+  const iconCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+  const iconCross = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
+
+  // ---- Log-trade screen state ----
+  let strategiesCache = [];
+  let selectedFile = null;
+  let previewUrl = null;
+  let selectedStrategyValue = OFFPLAN_VALUE;
+  let dashboardDirty = false;
+
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 
   async function fetchJSON(url) {
     const res = await fetch(url);
@@ -243,11 +265,9 @@
     el("filters").innerHTML = "";
   }
 
-  async function init() {
-    el("logTradeBtn").addEventListener("click", () => {
-      window.alert("Screenshot upload is coming soon.");
-    });
-
+  // Fetches + renders everything on the home screen. Re-run after a trade is
+  // logged so the ring, XP, streak and trade list reflect it immediately.
+  async function loadDashboard() {
     let dashboard, trades, strategies;
     try {
       [dashboard, trades, strategies] = await Promise.all([
@@ -257,17 +277,285 @@
       ]);
     } catch (err) {
       renderLoadError();
-      return;
+      return false;
     }
 
+    strategiesCache = strategies;
     renderHero(dashboard);
 
     const strategyById = new Map(strategies.map((s) => [s.id, s.name]));
-
     buildFilters(strategies, trades, (filtered, filterLabel) => {
       renderStats(filtered, filterLabel);
       renderTradeList(filtered, strategyById);
     });
+    return true;
+  }
+
+  // ---------------------------------------------------------------------
+  // Log-trade screen
+  // ---------------------------------------------------------------------
+
+  function showView(view) {
+    el("homeView").classList.toggle("hidden", view !== "home");
+    el("logView").classList.toggle("hidden", view !== "log");
+    el("homeTopbar").classList.toggle("hidden", view !== "home");
+    el("logTopbar").classList.toggle("hidden", view !== "log");
+    el("homeCta").classList.toggle("hidden", view !== "home");
+    window.scrollTo(0, 0);
+  }
+
+  function showLogSubView(sub) {
+    el("logFormView").classList.toggle("hidden", sub !== "form");
+    el("logLoadingView").classList.toggle("hidden", sub !== "loading");
+    el("logResultView").classList.toggle("hidden", sub !== "result");
+  }
+
+  function showError(message) {
+    el("logErrorText").textContent = message;
+    el("logErrorBanner").classList.remove("hidden");
+  }
+
+  function hideError() {
+    el("logErrorBanner").classList.add("hidden");
+  }
+
+  function setFile(file) {
+    if (!file || !file.type || !file.type.startsWith("image/")) {
+      showError("Please choose an image file.");
+      return;
+    }
+    selectedFile = file;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    el("previewImg").src = previewUrl;
+    el("dropzoneEmpty").classList.add("hidden");
+    el("dropzonePreview").classList.remove("hidden");
+    el("submitTradeBtn").disabled = false;
+    hideError();
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+    }
+    el("screenshotInput").value = "";
+    el("previewImg").src = "";
+    el("dropzoneEmpty").classList.remove("hidden");
+    el("dropzonePreview").classList.add("hidden");
+    el("submitTradeBtn").disabled = true;
+  }
+
+  function selectStrategy(value) {
+    selectedStrategyValue = value;
+    el("strategyPicker").querySelectorAll(".strategy-option").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.value === value);
+    });
+  }
+
+  function renderStrategyPicker() {
+    const container = el("strategyPicker");
+    container.innerHTML = "";
+
+    const offBtn = document.createElement("button");
+    offBtn.type = "button";
+    offBtn.className = "strategy-option offplan-option";
+    offBtn.dataset.value = OFFPLAN_VALUE;
+    offBtn.innerHTML = `
+      <span class="strategy-option-name">Off-plan / no setup</span>
+      <span class="strategy-option-hint">Not one of your defined setups</span>
+    `;
+    container.appendChild(offBtn);
+
+    strategiesCache.forEach((s) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "strategy-option";
+      btn.dataset.value = String(s.id);
+      const ruleCount = (s.rules || []).length;
+      btn.innerHTML = `
+        <span class="strategy-option-name">${escapeHtml(s.name)}</span>
+        <span class="strategy-option-hint">${ruleCount} rule${ruleCount === 1 ? "" : "s"}</span>
+      `;
+      container.appendChild(btn);
+    });
+
+    container.querySelectorAll(".strategy-option").forEach((btn) => {
+      btn.addEventListener("click", () => selectStrategy(btn.dataset.value));
+    });
+
+    selectStrategy(OFFPLAN_VALUE);
+  }
+
+  function resetLogForm() {
+    clearFile();
+    el("contextNote").value = "";
+    hideError();
+    renderStrategyPicker();
+    showLogSubView("form");
+  }
+
+  function openLogScreen() {
+    resetLogForm();
+    showView("log");
+  }
+
+  async function refreshIfDirty() {
+    if (dashboardDirty) {
+      await loadDashboard();
+      dashboardDirty = false;
+    }
+  }
+
+  function renderResult(trade, strategyName) {
+    const { cls, svg } = tradeIcon(trade);
+    const iconEl = el("resultIcon");
+    iconEl.className = `trade-icon ${cls}`;
+    iconEl.innerHTML = svg;
+
+    el("resultTitle").innerHTML =
+      escapeHtml(trade.instrument || "Unknown instrument") +
+      (trade.direction ? ` <span class="dir">${escapeHtml(trade.direction)}</span>` : "");
+    el("resultSub").textContent = trade.is_off_plan ? "Off-plan" : (strategyName || "—");
+
+    el("resultR").textContent = fmtR(trade.r_multiple);
+    const usdEl = el("resultUsd");
+    if (trade.pnl_usd !== null && trade.pnl_usd !== undefined) {
+      usdEl.textContent = fmtUsd(trade.pnl_usd);
+      usdEl.classList.remove("hidden");
+    } else {
+      usdEl.classList.add("hidden");
+    }
+
+    const offplanBanner = el("offplanBanner");
+    const ruleList = el("ruleList");
+    const xpBadge = el("xpEarnedBadge");
+    const coachCard = el("coachNoteCard");
+
+    if (trade.is_off_plan) {
+      offplanBanner.classList.remove("hidden");
+      el("offplanBannerText").textContent =
+        trade.coach_note || "No setup matched this trade.";
+      ruleList.classList.add("hidden");
+      ruleList.innerHTML = "";
+      xpBadge.classList.add("hidden");
+      coachCard.classList.add("hidden");
+    } else {
+      offplanBanner.classList.add("hidden");
+
+      const results = trade.rule_results || [];
+      ruleList.innerHTML = results
+        .map(
+          (r) => `
+        <div class="rule-tile ${r.passed ? "pass" : "fail"}">
+          <div class="rule-tile-icon">${r.passed ? iconCheck : iconCross}</div>
+          <div class="rule-tile-text">${escapeHtml(r.text)}</div>
+        </div>`
+        )
+        .join("");
+      ruleList.classList.remove("hidden");
+
+      xpBadge.textContent = `+${trade.xp_earned || 0} XP`;
+      xpBadge.classList.remove("hidden");
+
+      el("coachNoteText").textContent = trade.coach_note || "";
+      coachCard.classList.remove("hidden");
+    }
+  }
+
+  async function handleSubmit() {
+    if (!selectedFile) return;
+    hideError();
+    showLogSubView("loading");
+
+    try {
+      const form = new FormData();
+      form.append("user_id", String(USER_ID));
+      form.append("context_note", el("contextNote").value.trim());
+      if (selectedStrategyValue !== OFFPLAN_VALUE) {
+        form.append("strategy_id", selectedStrategyValue);
+      }
+      form.append("screenshot", selectedFile, selectedFile.name);
+
+      const res = await fetch("/trades", { method: "POST", body: form });
+      if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) message = body.detail;
+        } catch (_) {
+          // response body wasn't JSON — fall back to the generic message
+        }
+        throw new Error(message);
+      }
+
+      const trade = await res.json();
+      dashboardDirty = true;
+
+      const strategyName =
+        selectedStrategyValue === OFFPLAN_VALUE
+          ? null
+          : strategiesCache.find((s) => String(s.id) === selectedStrategyValue)?.name || null;
+
+      renderResult(trade, strategyName);
+      showLogSubView("result");
+    } catch (err) {
+      showLogSubView("form");
+      showError(err.message || "Something went wrong — check your connection and try again.");
+    }
+  }
+
+  function wireLogScreen() {
+    el("dropzoneEmpty").addEventListener("click", () => el("screenshotInput").click());
+    el("screenshotInput").addEventListener("change", (e) => {
+      if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
+    });
+    el("removeScreenshotBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      clearFile();
+    });
+
+    const dz = el("dropzone");
+    ["dragenter", "dragover"].forEach((evt) =>
+      dz.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dz.classList.add("dragging");
+      })
+    );
+    ["dragleave", "drop"].forEach((evt) =>
+      dz.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dz.classList.remove("dragging");
+      })
+    );
+    dz.addEventListener("drop", (e) => {
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+
+    el("submitTradeBtn").addEventListener("click", handleSubmit);
+
+    el("logBackBtn").addEventListener("click", async () => {
+      await refreshIfDirty();
+      showView("home");
+    });
+
+    el("logDoneBtn").addEventListener("click", async () => {
+      await refreshIfDirty();
+      showView("home");
+    });
+
+    el("logAnotherBtn").addEventListener("click", async () => {
+      await refreshIfDirty();
+      resetLogForm();
+    });
+  }
+
+  async function init() {
+    el("logTradeBtn").addEventListener("click", openLogScreen);
+    wireLogScreen();
+    await loadDashboard();
   }
 
   document.addEventListener("DOMContentLoaded", init);

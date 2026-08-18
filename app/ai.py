@@ -30,8 +30,12 @@ if _env.exists():
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
 
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # vision-capable
-TEXT_MODEL = "llama-3.3-70b-versatile"
+# llama-4-scout-17b-16e-instruct and llama-3.3-70b-versatile were both
+# deprecated by Groq (2026-06-17, shut off by August); migrated to their
+# recommended replacements. qwen3.6-27b is Groq's other multimodal option
+# besides the now-deprecated llama-4 vision models.
+VISION_MODEL = "qwen/qwen3.6-27b"  # vision-capable
+TEXT_MODEL = "openai/gpt-oss-120b"
 
 
 def _strip_to_json(raw: str) -> dict:
