@@ -38,6 +38,7 @@
   let previewUrl = null;
   let selectedStrategyValue = OFFPLAN_VALUE;
   let dashboardDirty = false;
+  let lastLoggedTradeId = null;
 
   // ---- Trade-detail screen state ----
   let currentDetailTradeId = null;
@@ -80,6 +81,28 @@
     const n = Math.round(Number(value));
     const sign = n > 0 ? "+" : n < 0 ? "-" : "";
     return `${sign}$${Math.abs(n)}`;
+  }
+
+  function fmtPriceValue(value) {
+    return value === null || value === undefined ? "—" : String(value);
+  }
+
+  // Pure R:R math shared by the detail screen's live-editable form and the
+  // read-only fact grid on the post-submit result screen.
+  function computeRRFromValues(entry, exit, sl) {
+    if (!Number.isFinite(entry) || !Number.isFinite(exit) || !Number.isFinite(sl)) return null;
+    const risk = Math.abs(entry - sl);
+    const reward = Math.abs(exit - entry);
+    if (risk === 0) return null;
+    return reward / risk;
+  }
+
+  function fmtRR(entry, exit, sl) {
+    // Number(null) is 0, not NaN — guard explicitly or a missing SL/entry/
+    // exit reads as a real zero price and produces a bogus ratio.
+    if ([entry, exit, sl].some((v) => v === null || v === undefined)) return "—";
+    const rr = computeRRFromValues(Number(entry), Number(exit), Number(sl));
+    return rr === null ? "—" : `1 : ${rr.toFixed(2)}`;
   }
 
   function levelFromXp(xp) {
@@ -437,6 +460,17 @@
       usdEl.classList.add("hidden");
     }
 
+    // Read-only parsed-field summary — only the result screen passes a
+    // `facts` id map; the detail screen shows these same fields via its own
+    // editable form instead, so there's nothing to do here for it.
+    if (ids.facts) {
+      el(ids.facts.entry).textContent = fmtPriceValue(trade.entry_price);
+      el(ids.facts.exit).textContent = fmtPriceValue(trade.exit_price);
+      el(ids.facts.sl).textContent = fmtPriceValue(trade.sl_price);
+      el(ids.facts.tp).textContent = fmtPriceValue(trade.tp_price);
+      el(ids.facts.rr).textContent = fmtRR(trade.entry_price, trade.exit_price, trade.sl_price);
+    }
+
     const offplanBanner = el(ids.offplanBanner);
     const ruleList = el(ids.ruleList);
     const xpBadge = el(ids.xpBadge);
@@ -476,6 +510,10 @@
   const RESULT_IDS = {
     icon: "resultIcon", title: "resultTitle", sub: "resultSub",
     r: "resultR", usd: "resultUsd",
+    facts: {
+      entry: "resultFactEntry", exit: "resultFactExit",
+      sl: "resultFactSl", tp: "resultFactTp", rr: "resultFactRR",
+    },
     offplanBanner: "offplanBanner", offplanText: "offplanBannerText",
     ruleList: "ruleList", xpBadge: "xpEarnedBadge",
     coachCard: "coachNoteCard", coachText: "coachNoteText",
@@ -513,13 +551,9 @@
 
       const trade = await res.json();
       dashboardDirty = true;
+      lastLoggedTradeId = trade.id;
 
-      const strategyName =
-        selectedStrategyValue === OFFPLAN_VALUE
-          ? null
-          : strategiesCache.find((s) => String(s.id) === selectedStrategyValue)?.name || null;
-
-      renderResult(trade, strategyName);
+      renderResult(trade, trade.strategy_name);
       showLogSubView("result");
     } catch (err) {
       showLogSubView("form");
@@ -556,6 +590,10 @@
     });
 
     el("submitTradeBtn").addEventListener("click", handleSubmit);
+
+    el("viewTradeDetailBtn").addEventListener("click", () => {
+      if (lastLoggedTradeId !== null) openTradeDetail(lastLoggedTradeId);
+    });
 
     el("logBackBtn").addEventListener("click", async () => {
       await refreshIfDirty();
@@ -609,11 +647,7 @@
     const entry = parseFloat(el("editEntryPrice").value);
     const exit = parseFloat(el("editExitPrice").value);
     const sl = parseFloat(el("editSlPrice").value);
-    if (!Number.isFinite(entry) || !Number.isFinite(exit) || !Number.isFinite(sl)) return null;
-    const risk = Math.abs(entry - sl);
-    const reward = Math.abs(exit - entry);
-    if (risk === 0) return null;
-    return reward / risk;
+    return computeRRFromValues(entry, exit, sl);
   }
 
   function updateRRDisplay() {

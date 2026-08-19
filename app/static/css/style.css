@@ -739,6 +739,50 @@ button {
 .offplan-banner-icon { flex-shrink: 0; width: 20px; height: 20px; }
 .offplan-banner p { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.4; }
 
+.fact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 12px;
+  padding: 14px 16px;
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--card-border);
+}
+
+.fact-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fact-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fact-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.text-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal-dark);
+  background: none;
+  border: none;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.text-link:hover { text-decoration: underline; }
+
 .rule-list {
   display: flex;
   flex-direction: column;

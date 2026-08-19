@@ -156,6 +156,29 @@
           <span class="result-usd hidden" id="resultUsd"></span>
         </div>
 
+        <div class="fact-grid">
+          <div class="fact-item">
+            <span class="fact-label">Entry</span>
+            <span class="fact-value" id="resultFactEntry">—</span>
+          </div>
+          <div class="fact-item">
+            <span class="fact-label">Exit</span>
+            <span class="fact-value" id="resultFactExit">—</span>
+          </div>
+          <div class="fact-item">
+            <span class="fact-label">Stop-loss</span>
+            <span class="fact-value" id="resultFactSl">—</span>
+          </div>
+          <div class="fact-item">
+            <span class="fact-label">Take-profit</span>
+            <span class="fact-value" id="resultFactTp">—</span>
+          </div>
+          <div class="fact-item">
+            <span class="fact-label">Risk / reward</span>
+            <span class="fact-value" id="resultFactRR">—</span>
+          </div>
+        </div>
+
         <div class="offplan-banner hidden" id="offplanBanner">
           <div class="offplan-banner-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -174,6 +197,8 @@
           <div class="coach-note-label">Coach note</div>
           <p id="coachNoteText"></p>
         </div>
+
+        <button type="button" class="text-link" id="viewTradeDetailBtn">Review &amp; edit full trade details →</button>
 
         <div class="result-actions">
           <button type="button" class="secondary-button" id="logAnotherBtn">Log another trade</button>

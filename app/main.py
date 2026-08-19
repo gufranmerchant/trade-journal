@@ -177,6 +177,52 @@ def create_user(payload: UserCreate):
         }
 
 
+class TradeUpdate(BaseModel):
+    """All fields the detail screen lets a user correct after a screenshot
+    parse got something wrong. Unlike StrategyUpdate, a field left out of the
+    request body still clears to null here (rather than being left alone) —
+    the edit form always submits every field together, so "not sent" and
+    "cleared" are the same intent, not a partial patch of unrelated fields.
+    """
+    user_id: int
+    instrument: str | None = None
+    direction: str | None = None
+    entry_price: float | None = None
+    exit_price: float | None = None
+    sl_price: float | None = None
+    tp_price: float | None = None
+    risk_pct: float | None = None
+    r_multiple: float | None = None
+    pnl_usd: float | None = None
+    session: str | None = None
+
+
+def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
+    return {
+        "id": trade.id,
+        "strategy_id": trade.strategy_id,
+        "strategy_name": strategy_name,
+        "instrument": trade.instrument,
+        "direction": trade.direction,
+        "entry_price": trade.entry_price,
+        "exit_price": trade.exit_price,
+        "sl_price": trade.sl_price,
+        "tp_price": trade.tp_price,
+        "risk_pct": trade.risk_pct,
+        "r_multiple": trade.r_multiple,
+        "pnl_usd": trade.pnl_usd,
+        "session": trade.session,
+        "context_note": trade.context_note,
+        "is_off_plan": trade.is_off_plan,
+        "rule_results": trade.rule_results,
+        "rules_passed": trade.rules_passed,
+        "rules_total": trade.rules_total,
+        "coach_note": trade.coach_note,
+        "xp_earned": trade.xp_earned,
+        "created_at": trade.created_at,
+    }
+
+
 @app.post("/trades")
 async def log_trade(
     user_id: int = Form(...),
@@ -244,19 +290,11 @@ async def log_trade(
         s.commit()
         s.refresh(trade)
 
-        return {
-            "id": trade.id,
-            "instrument": trade.instrument,
-            "direction": trade.direction,
-            "r_multiple": trade.r_multiple,
-            "pnl_usd": trade.pnl_usd,
-            "is_off_plan": trade.is_off_plan,
-            "rule_results": trade.rule_results,
-            "rules_passed": trade.rules_passed,
-            "rules_total": trade.rules_total,
-            "coach_note": trade.coach_note,
-            "xp_earned": trade.xp_earned,
-        }
+        # Same full shape GET/PATCH /trades/{id} return — the result screen
+        # needs entry/exit/SL/TP too, not just the R-multiple/verdict fields,
+        # and reusing this helper keeps "everything the detail screen shows"
+        # true from the very first render instead of just after a refetch.
+        return _trade_detail_out(trade, strategy.name if strategy else None)
 
 
 @app.get("/trades")
@@ -292,52 +330,6 @@ def list_trades(
             }
             for t in trades
         ]
-
-
-class TradeUpdate(BaseModel):
-    """All fields the detail screen lets a user correct after a screenshot
-    parse got something wrong. Unlike StrategyUpdate, a field left out of the
-    request body still clears to null here (rather than being left alone) —
-    the edit form always submits every field together, so "not sent" and
-    "cleared" are the same intent, not a partial patch of unrelated fields.
-    """
-    user_id: int
-    instrument: str | None = None
-    direction: str | None = None
-    entry_price: float | None = None
-    exit_price: float | None = None
-    sl_price: float | None = None
-    tp_price: float | None = None
-    risk_pct: float | None = None
-    r_multiple: float | None = None
-    pnl_usd: float | None = None
-    session: str | None = None
-
-
-def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
-    return {
-        "id": trade.id,
-        "strategy_id": trade.strategy_id,
-        "strategy_name": strategy_name,
-        "instrument": trade.instrument,
-        "direction": trade.direction,
-        "entry_price": trade.entry_price,
-        "exit_price": trade.exit_price,
-        "sl_price": trade.sl_price,
-        "tp_price": trade.tp_price,
-        "risk_pct": trade.risk_pct,
-        "r_multiple": trade.r_multiple,
-        "pnl_usd": trade.pnl_usd,
-        "session": trade.session,
-        "context_note": trade.context_note,
-        "is_off_plan": trade.is_off_plan,
-        "rule_results": trade.rule_results,
-        "rules_passed": trade.rules_passed,
-        "rules_total": trade.rules_total,
-        "coach_note": trade.coach_note,
-        "xp_earned": trade.xp_earned,
-        "created_at": trade.created_at,
-    }
 
 
 @app.get("/trades/{trade_id}")
