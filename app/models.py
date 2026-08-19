@@ -83,6 +83,8 @@ class Trade(Base):
     direction = Column(String)                      # "long" | "short"
     entry_price = Column(Float)
     exit_price = Column(Float)
+    sl_price = Column(Float)                          # stop-loss
+    tp_price = Column(Float)                          # take-profit
     risk_pct = Column(Float)
     r_multiple = Column(Float)                       # +2.1, -1.0
     pnl_usd = Column(Float)                           # +184.50, -92.00 — supplementary, null if not visible

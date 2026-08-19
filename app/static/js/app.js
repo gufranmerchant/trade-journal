@@ -39,6 +39,9 @@
   let selectedStrategyValue = OFFPLAN_VALUE;
   let dashboardDirty = false;
 
+  // ---- Trade-detail screen state ----
+  let currentDetailTradeId = null;
+
   function escapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str)
@@ -252,6 +255,7 @@
           ${hasUsd ? `<span class="trade-r-usd">${fmtUsd(trade.pnl_usd)}</span>` : ""}
         </div>
       `;
+      row.addEventListener("click", () => openTradeDetail(trade.id));
       container.appendChild(row);
     });
   }
@@ -298,8 +302,10 @@
   function showView(view) {
     el("homeView").classList.toggle("hidden", view !== "home");
     el("logView").classList.toggle("hidden", view !== "log");
+    el("detailView").classList.toggle("hidden", view !== "detail");
     el("homeTopbar").classList.toggle("hidden", view !== "home");
     el("logTopbar").classList.toggle("hidden", view !== "log");
+    el("detailTopbar").classList.toggle("hidden", view !== "detail");
     el("homeCta").classList.toggle("hidden", view !== "home");
     window.scrollTo(0, 0);
   }
@@ -408,19 +414,22 @@
     }
   }
 
-  function renderResult(trade, strategyName) {
+  // Shared by the log-screen result and the trade-detail screen — both show
+  // the same icon/title/R/$/rule-checklist/coach-note shape, just under
+  // different element ids, so the id map is the only thing that varies.
+  function renderVerdictBlock(ids, trade, strategyName) {
     const { cls, svg } = tradeIcon(trade);
-    const iconEl = el("resultIcon");
+    const iconEl = el(ids.icon);
     iconEl.className = `trade-icon ${cls}`;
     iconEl.innerHTML = svg;
 
-    el("resultTitle").innerHTML =
+    el(ids.title).innerHTML =
       escapeHtml(trade.instrument || "Unknown instrument") +
       (trade.direction ? ` <span class="dir">${escapeHtml(trade.direction)}</span>` : "");
-    el("resultSub").textContent = trade.is_off_plan ? "Off-plan" : (strategyName || "—");
+    el(ids.sub).textContent = trade.is_off_plan ? "Off-plan" : (strategyName || "—");
 
-    el("resultR").textContent = fmtR(trade.r_multiple);
-    const usdEl = el("resultUsd");
+    el(ids.r).textContent = fmtR(trade.r_multiple);
+    const usdEl = el(ids.usd);
     if (trade.pnl_usd !== null && trade.pnl_usd !== undefined) {
       usdEl.textContent = fmtUsd(trade.pnl_usd);
       usdEl.classList.remove("hidden");
@@ -428,14 +437,14 @@
       usdEl.classList.add("hidden");
     }
 
-    const offplanBanner = el("offplanBanner");
-    const ruleList = el("ruleList");
-    const xpBadge = el("xpEarnedBadge");
-    const coachCard = el("coachNoteCard");
+    const offplanBanner = el(ids.offplanBanner);
+    const ruleList = el(ids.ruleList);
+    const xpBadge = el(ids.xpBadge);
+    const coachCard = el(ids.coachCard);
 
     if (trade.is_off_plan) {
       offplanBanner.classList.remove("hidden");
-      el("offplanBannerText").textContent =
+      el(ids.offplanText).textContent =
         trade.coach_note || "No setup matched this trade.";
       ruleList.classList.add("hidden");
       ruleList.innerHTML = "";
@@ -459,9 +468,21 @@
       xpBadge.textContent = `+${trade.xp_earned || 0} XP`;
       xpBadge.classList.remove("hidden");
 
-      el("coachNoteText").textContent = trade.coach_note || "";
+      el(ids.coachText).textContent = trade.coach_note || "";
       coachCard.classList.remove("hidden");
     }
+  }
+
+  const RESULT_IDS = {
+    icon: "resultIcon", title: "resultTitle", sub: "resultSub",
+    r: "resultR", usd: "resultUsd",
+    offplanBanner: "offplanBanner", offplanText: "offplanBannerText",
+    ruleList: "ruleList", xpBadge: "xpEarnedBadge",
+    coachCard: "coachNoteCard", coachText: "coachNoteText",
+  };
+
+  function renderResult(trade, strategyName) {
+    renderVerdictBlock(RESULT_IDS, trade, strategyName);
   }
 
   async function handleSubmit() {
@@ -552,9 +573,167 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Trade-detail screen
+  // ---------------------------------------------------------------------
+
+  const DETAIL_IDS = {
+    icon: "detailIcon", title: "detailTitle", sub: "detailSub",
+    r: "detailR", usd: "detailUsd",
+    offplanBanner: "detailOffplanBanner", offplanText: "detailOffplanText",
+    ruleList: "detailRuleList", xpBadge: "detailXpBadge",
+    coachCard: "detailCoachCard", coachText: "detailCoachText",
+  };
+
+  function renderDetailVerdict(trade, strategyName) {
+    renderVerdictBlock(DETAIL_IDS, trade, strategyName);
+  }
+
+  function showDetailSubView(sub) {
+    el("detailLoadingView").classList.toggle("hidden", sub !== "loading");
+    el("detailLoadErrorView").classList.toggle("hidden", sub !== "error");
+    el("detailBodyView").classList.toggle("hidden", sub !== "body");
+  }
+
+  function numOrNull(id) {
+    const v = el(id).value;
+    return v === "" ? null : Number(v);
+  }
+
+  function strOrNull(id) {
+    const v = el(id).value.trim();
+    return v === "" ? null : v;
+  }
+
+  function computeRR() {
+    const entry = parseFloat(el("editEntryPrice").value);
+    const exit = parseFloat(el("editExitPrice").value);
+    const sl = parseFloat(el("editSlPrice").value);
+    if (!Number.isFinite(entry) || !Number.isFinite(exit) || !Number.isFinite(sl)) return null;
+    const risk = Math.abs(entry - sl);
+    const reward = Math.abs(exit - entry);
+    if (risk === 0) return null;
+    return reward / risk;
+  }
+
+  function updateRRDisplay() {
+    const rr = computeRR();
+    el("editRR").textContent = rr === null ? "—" : `1 : ${rr.toFixed(2)}`;
+  }
+
+  function populateEditForm(trade) {
+    el("editInstrument").value = trade.instrument || "";
+    el("editDirection").value = trade.direction || "";
+    el("editSession").value = trade.session || "";
+    el("editEntryPrice").value = trade.entry_price ?? "";
+    el("editExitPrice").value = trade.exit_price ?? "";
+    el("editSlPrice").value = trade.sl_price ?? "";
+    el("editTpPrice").value = trade.tp_price ?? "";
+    el("editRiskPct").value = trade.risk_pct ?? "";
+    el("editRMultiple").value = trade.r_multiple ?? "";
+    el("editPnlUsd").value = trade.pnl_usd ?? "";
+    updateRRDisplay();
+  }
+
+  async function openTradeDetail(tradeId) {
+    currentDetailTradeId = tradeId;
+    el("saveConfirm").classList.add("hidden");
+    el("detailErrorBanner").classList.add("hidden");
+    showView("detail");
+    showDetailSubView("loading");
+
+    let trade;
+    try {
+      trade = await fetchJSON(`/trades/${tradeId}?user_id=${USER_ID}`);
+    } catch (err) {
+      showDetailSubView("error");
+      return;
+    }
+
+    el("detailTopbarTitle").textContent = trade.instrument || "Trade";
+    renderDetailVerdict(trade, trade.strategy_name);
+
+    const contextCard = el("detailContextCard");
+    if (trade.context_note) {
+      el("detailContextText").textContent = trade.context_note;
+      contextCard.classList.remove("hidden");
+    } else {
+      contextCard.classList.add("hidden");
+    }
+
+    populateEditForm(trade);
+    showDetailSubView("body");
+  }
+
+  async function handleSaveTrade() {
+    if (currentDetailTradeId === null) return;
+    el("detailErrorBanner").classList.add("hidden");
+    el("saveConfirm").classList.add("hidden");
+    const saveBtn = el("saveTradeBtn");
+    saveBtn.disabled = true;
+
+    const payload = {
+      user_id: USER_ID,
+      instrument: strOrNull("editInstrument"),
+      direction: strOrNull("editDirection"),
+      entry_price: numOrNull("editEntryPrice"),
+      exit_price: numOrNull("editExitPrice"),
+      sl_price: numOrNull("editSlPrice"),
+      tp_price: numOrNull("editTpPrice"),
+      risk_pct: numOrNull("editRiskPct"),
+      r_multiple: numOrNull("editRMultiple"),
+      pnl_usd: numOrNull("editPnlUsd"),
+      session: strOrNull("editSession"),
+    };
+
+    try {
+      const res = await fetch(`/trades/${currentDetailTradeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) message = body.detail;
+        } catch (_) {
+          // response body wasn't JSON — fall back to the generic message
+        }
+        throw new Error(message);
+      }
+
+      const trade = await res.json();
+      dashboardDirty = true;
+
+      el("detailTopbarTitle").textContent = trade.instrument || "Trade";
+      renderDetailVerdict(trade, trade.strategy_name);
+      populateEditForm(trade);
+      el("saveConfirm").classList.remove("hidden");
+    } catch (err) {
+      el("detailErrorText").textContent =
+        err.message || "Couldn't save changes — try again.";
+      el("detailErrorBanner").classList.remove("hidden");
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  function wireDetailScreen() {
+    el("detailBackBtn").addEventListener("click", async () => {
+      await refreshIfDirty();
+      showView("home");
+    });
+    el("saveTradeBtn").addEventListener("click", handleSaveTrade);
+    ["editEntryPrice", "editExitPrice", "editSlPrice"].forEach((id) => {
+      el(id).addEventListener("input", updateRRDisplay);
+    });
+  }
+
   async function init() {
     el("logTradeBtn").addEventListener("click", openLogScreen);
     wireLogScreen();
+    wireDetailScreen();
     await loadDashboard();
   }
 

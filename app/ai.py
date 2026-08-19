@@ -15,6 +15,7 @@ discipline as the Mondo finance_ai anomaly checks.
 
 import os
 import json
+import re
 import base64
 from pathlib import Path
 from groq import Groq
@@ -38,14 +39,32 @@ VISION_MODEL = "qwen/qwen3.6-27b"  # vision-capable
 TEXT_MODEL = "openai/gpt-oss-120b"
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?(</think>|$)", re.DOTALL)
+
+
+class AIResponseError(RuntimeError):
+    """The model didn't return parseable JSON — bad input, or it ran out of
+    output budget mid-reasoning. Caught in main.py and turned into a clean
+    error the user can retry, instead of an unhandled 500."""
+
+
 def _strip_to_json(raw: str) -> dict:
-    """Models sometimes wrap JSON in prose or ```json fences. Be defensive."""
-    cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
+    """Models sometimes wrap JSON in prose, ```json fences, or a <think>
+    reasoning trace. Be defensive — reasoning text can itself contain a
+    stray {...} example that would otherwise confuse the brace-matching
+    below, so drop any think block first rather than just markdown fences."""
+    cleaned = _THINK_BLOCK_RE.sub("", raw or "").strip()
+    cleaned = cleaned.replace("```json", "").replace("```", "").strip()
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start != -1 and end != -1:
         cleaned = cleaned[start:end + 1]
-    return json.loads(cleaned)
+    if not cleaned:
+        raise AIResponseError("Model returned no parseable content")
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise AIResponseError(f"Model returned malformed JSON: {e}") from e
 
 
 PARSE_SYSTEM = """You read a trading screenshot (broker order, chart, or \
@@ -57,6 +76,8 @@ no code fences, with exactly these keys:
   "direction": "long" | "short" | null,
   "entry_price": number or null,
   "exit_price": number or null,
+  "sl_price": number or null,
+  "tp_price": number or null,
   "risk_pct": number or null,
   "r_multiple": number or null,
   "pnl_usd": number or null,
@@ -72,6 +93,10 @@ def parse_screenshot(image_bytes: bytes, context_note: str) -> dict:
     resp = client.chat.completions.create(
         model=VISION_MODEL,
         temperature=0,
+        # This is a structured-extraction task, not something that benefits
+        # from chain-of-thought — and letting qwen3.6-27b "think" burned its
+        # whole output budget on complex screenshots, leaving content empty.
+        reasoning_effort="none",
         messages=[
             {"role": "system", "content": PARSE_SYSTEM},
             {"role": "user", "content": [
@@ -118,6 +143,11 @@ def check_rules(trade: dict, strategy_name: str, rules: list, context_note: str)
     resp = client.chat.completions.create(
         model=TEXT_MODEL,
         temperature=0.2,
+        # gpt-oss-120b doesn't support reasoning_effort="none" (only
+        # low/medium/high, default medium) — use "low" plus reasoning_format
+        # "hidden" so its own reasoning trace never leaks into `content`.
+        reasoning_effort="low",
+        reasoning_format="hidden",
         messages=[
             {"role": "system", "content": VERDICT_SYSTEM},
             {"role": "user", "content":

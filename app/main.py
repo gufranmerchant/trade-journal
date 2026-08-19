@@ -180,7 +180,10 @@ async def log_trade(
     image_bytes = await screenshot.read()
 
     # Pass 1 — parse
-    parsed = ai.parse_screenshot(image_bytes, context_note)
+    try:
+        parsed = ai.parse_screenshot(image_bytes, context_note)
+    except ai.AIResponseError:
+        raise HTTPException(502, "Couldn't read that screenshot — try again or use a clearer image.")
 
     with Session(engine) as s:
         strategy = None
@@ -196,6 +199,8 @@ async def log_trade(
             direction=parsed.get("direction"),
             entry_price=parsed.get("entry_price"),
             exit_price=parsed.get("exit_price"),
+            sl_price=parsed.get("sl_price"),
+            tp_price=parsed.get("tp_price"),
             risk_pct=parsed.get("risk_pct"),
             r_multiple=parsed.get("r_multiple"),
             pnl_usd=parsed.get("pnl_usd"),
@@ -211,7 +216,10 @@ async def log_trade(
                                 "or an impulse?")
         else:
             # Pass 2 — verdict against the user's own rules
-            verdict = ai.check_rules(parsed, strategy.name, strategy.rules, context_note)
+            try:
+                verdict = ai.check_rules(parsed, strategy.name, strategy.rules, context_note)
+            except ai.AIResponseError:
+                raise HTTPException(502, "Couldn't check this trade against your rules — try again.")
             score = ai.score_trade(verdict)
             trade.rule_results = verdict.get("rule_results", [])
             trade.rules_passed = score["rules_passed"]
@@ -277,6 +285,96 @@ def list_trades(
             }
             for t in trades
         ]
+
+
+class TradeUpdate(BaseModel):
+    """All fields the detail screen lets a user correct after a screenshot
+    parse got something wrong. Unlike StrategyUpdate, a field left out of the
+    request body still clears to null here (rather than being left alone) —
+    the edit form always submits every field together, so "not sent" and
+    "cleared" are the same intent, not a partial patch of unrelated fields.
+    """
+    user_id: int
+    instrument: str | None = None
+    direction: str | None = None
+    entry_price: float | None = None
+    exit_price: float | None = None
+    sl_price: float | None = None
+    tp_price: float | None = None
+    risk_pct: float | None = None
+    r_multiple: float | None = None
+    pnl_usd: float | None = None
+    session: str | None = None
+
+
+def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
+    return {
+        "id": trade.id,
+        "strategy_id": trade.strategy_id,
+        "strategy_name": strategy_name,
+        "instrument": trade.instrument,
+        "direction": trade.direction,
+        "entry_price": trade.entry_price,
+        "exit_price": trade.exit_price,
+        "sl_price": trade.sl_price,
+        "tp_price": trade.tp_price,
+        "risk_pct": trade.risk_pct,
+        "r_multiple": trade.r_multiple,
+        "pnl_usd": trade.pnl_usd,
+        "session": trade.session,
+        "context_note": trade.context_note,
+        "is_off_plan": trade.is_off_plan,
+        "rule_results": trade.rule_results,
+        "rules_passed": trade.rules_passed,
+        "rules_total": trade.rules_total,
+        "coach_note": trade.coach_note,
+        "xp_earned": trade.xp_earned,
+        "created_at": trade.created_at,
+    }
+
+
+@app.get("/trades/{trade_id}")
+def get_trade(trade_id: int, user_id: int):
+    with Session(engine) as s:
+        trade = s.get(Trade, trade_id)
+        if trade is None or trade.user_id != user_id:
+            raise HTTPException(404, "Trade not found for this user")
+
+        strategy_name = None
+        if trade.strategy_id is not None:
+            strategy = s.get(Strategy, trade.strategy_id)
+            strategy_name = strategy.name if strategy else None
+
+        return _trade_detail_out(trade, strategy_name)
+
+
+@app.patch("/trades/{trade_id}")
+def update_trade(trade_id: int, payload: TradeUpdate):
+    with Session(engine) as s:
+        trade = s.get(Trade, trade_id)
+        if trade is None or trade.user_id != payload.user_id:
+            raise HTTPException(404, "Trade not found for this user")
+
+        trade.instrument = payload.instrument
+        trade.direction = payload.direction
+        trade.entry_price = payload.entry_price
+        trade.exit_price = payload.exit_price
+        trade.sl_price = payload.sl_price
+        trade.tp_price = payload.tp_price
+        trade.risk_pct = payload.risk_pct
+        trade.r_multiple = payload.r_multiple
+        trade.pnl_usd = payload.pnl_usd
+        trade.session = payload.session
+
+        s.commit()
+        s.refresh(trade)
+
+        strategy_name = None
+        if trade.strategy_id is not None:
+            strategy = s.get(Strategy, trade.strategy_id)
+            strategy_name = strategy.name if strategy else None
+
+        return _trade_detail_out(trade, strategy_name)
 
 
 @app.get("/users/{user_id}/dashboard")

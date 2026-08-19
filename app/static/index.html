@@ -36,6 +36,17 @@
       <span class="topbar-spacer" aria-hidden="true"></span>
     </header>
 
+    <header class="topbar hidden" id="detailTopbar">
+      <button class="icon-button" id="detailBackBtn" type="button" aria-label="Back to dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </button>
+      <span class="topbar-title" id="detailTopbarTitle">Trade</span>
+      <span class="topbar-spacer" aria-hidden="true"></span>
+    </header>
+
     <main class="content" id="homeView">
       <section class="hero card">
         <div class="ring-wrap">
@@ -109,8 +120,8 @@
 
         <div class="field-block">
           <label class="field-label" for="contextNote">Context <span class="field-optional">(optional)</span></label>
-          <input type="text" id="contextNote" class="text-input" maxlength="200"
-                 placeholder="One line about this trade — e.g. waited for the retest before entering">
+          <textarea id="contextNote" class="text-input textarea-input" maxlength="1000" rows="4"
+                    placeholder="Explain the setup — what you saw, why you took it, what you were watching for..."></textarea>
         </div>
 
         <div class="field-block">
@@ -167,6 +178,125 @@
         <div class="result-actions">
           <button type="button" class="secondary-button" id="logAnotherBtn">Log another trade</button>
           <button type="button" class="cta-button" id="logDoneBtn">Done</button>
+        </div>
+      </section>
+    </main>
+
+    <main class="content hidden" id="detailView">
+      <section class="loading-state hidden" id="detailLoadingView" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="loading-title">Loading trade…</p>
+      </section>
+
+      <section class="empty-state card hidden" id="detailLoadErrorView">
+        <h3>Couldn't load this trade</h3>
+        <p>It may have been removed, or belongs to a different user.</p>
+      </section>
+
+      <section class="detail-body hidden" id="detailBodyView" aria-live="polite">
+        <div class="result-header">
+          <div class="trade-icon" id="detailIcon"></div>
+          <div class="result-header-text">
+            <div class="result-title" id="detailTitle"></div>
+            <div class="result-sub" id="detailSub"></div>
+          </div>
+        </div>
+
+        <div class="result-figures">
+          <span class="result-r" id="detailR"></span>
+          <span class="result-usd hidden" id="detailUsd"></span>
+        </div>
+
+        <div class="offplan-banner hidden" id="detailOffplanBanner">
+          <div class="offplan-banner-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 22V4"></path>
+              <path d="M4 4h13l-2 4 2 4H4"></path>
+            </svg>
+          </div>
+          <p id="detailOffplanText"></p>
+        </div>
+
+        <div class="rule-list hidden" id="detailRuleList"></div>
+
+        <span class="xp-earned-badge hidden" id="detailXpBadge"></span>
+
+        <div class="coach-note card hidden" id="detailCoachCard">
+          <div class="coach-note-label">Coach note</div>
+          <p id="detailCoachText"></p>
+        </div>
+
+        <div class="coach-note card context-readout hidden" id="detailContextCard">
+          <div class="coach-note-label">Context</div>
+          <p id="detailContextText"></p>
+        </div>
+
+        <div class="detail-edit-section">
+          <div class="section-label">Trade details</div>
+          <p class="section-hint">Edit anything the screenshot parser got wrong.</p>
+
+          <div class="field-grid">
+            <div class="field-block field-block--full">
+              <label class="field-label" for="editInstrument">Instrument</label>
+              <input type="text" id="editInstrument" class="text-input" placeholder="e.g. XAUUSD">
+            </div>
+
+            <div class="field-block">
+              <label class="field-label" for="editDirection">Direction</label>
+              <select id="editDirection" class="text-input">
+                <option value="">—</option>
+                <option value="long">Long</option>
+                <option value="short">Short</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="editSession">Session</label>
+              <input type="text" id="editSession" class="text-input" placeholder="e.g. New York">
+            </div>
+
+            <div class="field-block">
+              <label class="field-label" for="editEntryPrice">Entry price</label>
+              <input type="number" step="any" id="editEntryPrice" class="text-input">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="editExitPrice">Exit price</label>
+              <input type="number" step="any" id="editExitPrice" class="text-input">
+            </div>
+
+            <div class="field-block">
+              <label class="field-label" for="editSlPrice">Stop-loss</label>
+              <input type="number" step="any" id="editSlPrice" class="text-input">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="editTpPrice">Take-profit</label>
+              <input type="number" step="any" id="editTpPrice" class="text-input">
+            </div>
+
+            <div class="field-block">
+              <label class="field-label">Risk / reward</label>
+              <div class="readonly-value" id="editRR">—</div>
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="editRiskPct">Risk %</label>
+              <input type="number" step="any" id="editRiskPct" class="text-input">
+            </div>
+
+            <div class="field-block">
+              <label class="field-label" for="editRMultiple">R-multiple</label>
+              <input type="number" step="any" id="editRMultiple" class="text-input">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="editPnlUsd">Dollar P&amp;L</label>
+              <input type="number" step="any" id="editPnlUsd" class="text-input">
+            </div>
+          </div>
+
+          <div class="error-banner hidden" id="detailErrorBanner" role="alert">
+            <span id="detailErrorText"></span>
+          </div>
+
+          <button type="button" class="cta-button" id="saveTradeBtn">Save changes</button>
+          <p class="save-confirm hidden" id="saveConfirm">Saved.</p>
         </div>
       </section>
     </main>

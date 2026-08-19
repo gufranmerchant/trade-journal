@@ -529,6 +529,13 @@ button {
 }
 .text-input:focus { border-color: var(--teal); }
 
+.textarea-input {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
 .dropzone {
   position: relative;
   border-radius: var(--radius-lg);
@@ -791,6 +798,75 @@ button {
   flex-direction: column;
   gap: 10px;
   margin-top: 4px;
+}
+
+/* ---------- Trade detail screen ---------- */
+.detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.section-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 4px 0 4px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 12px;
+  margin-top: 10px;
+}
+
+.field-grid .field-block { margin-bottom: 0; }
+.field-grid .field-block--full { grid-column: 1 / -1; }
+
+select.text-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%235F5E5A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+}
+
+.readonly-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1.5px solid transparent;
+  background: var(--bg);
+}
+
+.save-confirm {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--success);
+  padding: 4px 0 0;
+}
+
+.context-readout {
+  padding: 14px 16px;
+}
+.context-readout .coach-note-label { margin-bottom: 6px; }
+.context-readout p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 /* ---------- Responsive polish ---------- */
