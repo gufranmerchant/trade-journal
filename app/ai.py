@@ -15,10 +15,13 @@ discipline as the Mondo finance_ai anomaly checks.
 
 import os
 import json
+import logging
 import re
 import base64
 from pathlib import Path
 from groq import Groq
+
+logger = logging.getLogger(__name__)
 
 # Lightweight .env loader (no extra dependency) — reads KEY=value lines.
 _env = Path(__file__).resolve().parent.parent / ".env"
@@ -108,7 +111,12 @@ def parse_screenshot(image_bytes: bytes, context_note: str) -> dict:
             ]},
         ],
     )
-    return _strip_to_json(resp.choices[0].message.content)
+    raw_content = resp.choices[0].message.content
+    # INFO, not DEBUG — this is the one place the exact model output is
+    # visible; logged unconditionally so a bad parse can always be diagnosed
+    # from the server log without turning on debug logging after the fact.
+    logger.info("parse_screenshot raw model output: %r", raw_content)
+    return _strip_to_json(raw_content)
 
 
 VERDICT_SYSTEM = """You are a trading-discipline coach. You are given a trade \

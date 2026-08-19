@@ -24,6 +24,7 @@ POST /users creates the user row everything else hangs off of (email must
 be unique) — there's no auth yet, so this is just enough to seed data.
 """
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -35,6 +36,12 @@ from sqlalchemy.orm import Session
 
 from app.models import Base, User, Strategy, Trade
 from app import ai
+
+# INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
+# (see app/ai.py) shows up by default under `uvicorn app.main:app` without
+# needing separate logging config — the whole point is to always be able to
+# see what the vision model actually returned for a given screenshot.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 
 engine = create_engine("sqlite:///journal.db")
 Base.metadata.create_all(engine)
