@@ -47,6 +47,17 @@
       <span class="topbar-spacer" aria-hidden="true"></span>
     </header>
 
+    <header class="topbar hidden" id="strategyTopbar">
+      <button class="icon-button" id="strategyBackBtn" type="button" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </button>
+      <span class="topbar-title" id="strategyTopbarTitle">New Strategy</span>
+      <span class="topbar-spacer" aria-hidden="true"></span>
+    </header>
+
     <main class="content" id="homeView">
       <section class="hero card">
         <div class="ring-wrap">
@@ -323,6 +334,40 @@
           <button type="button" class="cta-button" id="saveTradeBtn">Save changes</button>
           <p class="save-confirm hidden" id="saveConfirm">Saved.</p>
         </div>
+      </section>
+    </main>
+
+    <main class="content hidden" id="strategyView">
+      <section class="strategy-form" id="strategyFormView">
+        <div class="field-block">
+          <label class="field-label" for="strategyName">Name</label>
+          <input type="text" id="strategyName" class="text-input" maxlength="80" placeholder="e.g. Breakout Retest">
+        </div>
+
+        <div class="field-block">
+          <label class="field-label" id="strategyDirectionLabel">Direction bias</label>
+          <div class="segmented" id="strategyDirection" role="group" aria-labelledby="strategyDirectionLabel">
+            <button type="button" class="segment-btn" data-value="long">Long</button>
+            <button type="button" class="segment-btn" data-value="short">Short</button>
+            <button type="button" class="segment-btn active" data-value="both">Both</button>
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label">Rules</label>
+          <p class="section-hint">Write rules the AI can actually check against a trade — specific and checkable, not vibes.</p>
+          <div class="rule-examples">
+            e.g. &ldquo;Entered only after the confirmation candle closed&rdquo; &middot; &ldquo;Risk no more than 1% of account&rdquo; &middot; &ldquo;Traded only during the New York session&rdquo;
+          </div>
+          <div class="rule-rows" id="strategyRuleRows"></div>
+          <button type="button" class="add-rule-btn" id="addRuleBtn">+ Add rule</button>
+        </div>
+
+        <div class="error-banner hidden" id="strategyErrorBanner" role="alert">
+          <span id="strategyErrorText"></span>
+        </div>
+
+        <button type="button" class="cta-button" id="saveStrategyBtn">Save strategy</button>
       </section>
     </main>
 

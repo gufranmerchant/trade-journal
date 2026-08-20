@@ -11,9 +11,10 @@ preset). It is a discipline coach, not a trading-advice tool: a winning trade th
 a rule still fails that rule.
 
 Status: backend (data model, two-pass AI pipeline, trade/dashboard/strategy endpoints)
-plus a static dashboard frontend (`app/static/`). No onboarding flow, screenshot-upload
-UI, or auth yet — the dashboard reads live data, but logging a trade still requires
-calling `POST /trades` directly (the "Log trade from screenshot" button is a placeholder).
+plus a static frontend (`app/static/`) covering the dashboard, screenshot-upload flow,
+trade detail/edit screen, and strategy create/edit screen. No onboarding flow or auth
+yet — the active user still comes from `?user_id=`/`localStorage`, so a brand-new user
+still needs `POST /users` via `/docs` before the app has anything to show them.
 
 ## Commands
 
@@ -136,9 +137,19 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   in the 30-day window has one — otherwise it falls back to summing `r_multiple`, same as
   before `pnl_usd` existed. `r_multiple` stays the actual discipline unit everywhere else
   (trade rows, filters); dollars are supplementary display only.
-- The "Log trade from screenshot" CTA and the "+" (new strategy) filter chip are both
-  placeholders (`window.alert`) — screenshot upload and in-app strategy creation aren't
-  wired up yet; use `POST /trades` / `POST /strategies` via `/docs` for those.
+- The "Log trade from screenshot" CTA opens the upload screen (pick/drag a screenshot,
+  optional context note, strategy picker), which POSTs multipart to `/trades` and renders
+  the judged result; tapping a trade row (or "Review & edit full trade details") opens the
+  detail/edit screen backed by `GET`/`PATCH /trades/{id}`.
+- The "+" (new strategy) filter chip, and a "+ New strategy" tile plus a per-strategy edit
+  (pencil) button inside the upload screen's strategy picker, all open the same
+  create/edit screen: name, direction bias (long/short/both), and a rules list with
+  add/remove rows and inline examples of *checkable* rule phrasing. It POSTs to
+  `/strategies` (create) or PATCHes `/strategies/{id}` (edit), sending each rule's
+  existing `id` (or none, for a new rule) so `_apply_rule_updates` keeps ids stable —
+  rows are just `{id, text}` in the DOM, keyed by `data-rule-id`. Which screen "back"/save
+  returns to (dashboard vs. upload screen) is tracked in `strategyReturnView` since the
+  screen is reachable from both places.
 
 ## Conventions worth knowing
 

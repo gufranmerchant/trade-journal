@@ -31,6 +31,7 @@
   const iconFlagOff = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h13l-2 4 2 4H4"/></svg>`;
   const iconCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
   const iconCross = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
+  const iconEdit = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 
   // ---- Log-trade screen state ----
   let strategiesCache = [];
@@ -39,6 +40,10 @@
   let selectedStrategyValue = OFFPLAN_VALUE;
   let dashboardDirty = false;
   let lastLoggedTradeId = null;
+
+  // ---- Strategy screen state ----
+  let editingStrategyId = null;
+  let strategyReturnView = "home";
 
   // ---- Trade-detail screen state ----
   let currentDetailTradeId = null;
@@ -214,7 +219,8 @@
     addBtn.textContent = "+";
     addBtn.setAttribute("aria-label", "New strategy");
     addBtn.addEventListener("click", () => {
-      window.alert("Strategy setup is coming soon — for now, add one via POST /strategies.");
+      strategyReturnView = "home";
+      openNewStrategyScreen();
     });
     container.appendChild(addBtn);
 
@@ -326,9 +332,11 @@
     el("homeView").classList.toggle("hidden", view !== "home");
     el("logView").classList.toggle("hidden", view !== "log");
     el("detailView").classList.toggle("hidden", view !== "detail");
+    el("strategyView").classList.toggle("hidden", view !== "strategy");
     el("homeTopbar").classList.toggle("hidden", view !== "home");
     el("logTopbar").classList.toggle("hidden", view !== "log");
     el("detailTopbar").classList.toggle("hidden", view !== "detail");
+    el("strategyTopbar").classList.toggle("hidden", view !== "strategy");
     el("homeCta").classList.toggle("hidden", view !== "home");
     window.scrollTo(0, 0);
   }
@@ -398,6 +406,9 @@
     container.appendChild(offBtn);
 
     strategiesCache.forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "strategy-row";
+
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "strategy-option";
@@ -407,8 +418,32 @@
         <span class="strategy-option-name">${escapeHtml(s.name)}</span>
         <span class="strategy-option-hint">${ruleCount} rule${ruleCount === 1 ? "" : "s"}</span>
       `;
-      container.appendChild(btn);
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "strategy-edit-btn";
+      editBtn.setAttribute("aria-label", `Edit ${s.name}`);
+      editBtn.innerHTML = iconEdit;
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        strategyReturnView = "log";
+        openEditStrategyScreen(s.id);
+      });
+
+      row.appendChild(btn);
+      row.appendChild(editBtn);
+      container.appendChild(row);
     });
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "strategy-add-btn";
+    addBtn.textContent = "+ New strategy";
+    addBtn.addEventListener("click", () => {
+      strategyReturnView = "log";
+      openNewStrategyScreen();
+    });
+    container.appendChild(addBtn);
 
     container.querySelectorAll(".strategy-option").forEach((btn) => {
       btn.addEventListener("click", () => selectStrategy(btn.dataset.value));
@@ -764,10 +799,181 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Strategy create/edit screen
+  // ---------------------------------------------------------------------
+
+  function hideStrategyError() {
+    el("strategyErrorBanner").classList.add("hidden");
+  }
+
+  function showStrategyError(message) {
+    el("strategyErrorText").textContent = message;
+    el("strategyErrorBanner").classList.remove("hidden");
+  }
+
+  function selectDirection(value) {
+    el("strategyDirection").querySelectorAll(".segment-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.value === value);
+    });
+  }
+
+  function createRuleRow(ruleId, text) {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    if (ruleId !== null && ruleId !== undefined) row.dataset.ruleId = String(ruleId);
+    row.innerHTML = `
+      <input type="text" class="text-input rule-input" maxlength="300"
+             placeholder="e.g. Entered only after the confirmation candle closed"
+             value="${escapeHtml(text || "")}">
+      <button type="button" class="rule-remove-btn" aria-label="Remove rule">${iconCross}</button>
+    `;
+    row.querySelector(".rule-remove-btn").addEventListener("click", () => row.remove());
+    return row;
+  }
+
+  function addRuleRow(ruleId, text) {
+    const row = createRuleRow(ruleId, text);
+    el("strategyRuleRows").appendChild(row);
+    return row;
+  }
+
+  function resetStrategyForm() {
+    editingStrategyId = null;
+    el("strategyTopbarTitle").textContent = "New Strategy";
+    el("saveStrategyBtn").textContent = "Save strategy";
+    el("strategyName").value = "";
+    selectDirection("both");
+    el("strategyRuleRows").innerHTML = "";
+    addRuleRow(null, "");
+    hideStrategyError();
+  }
+
+  function openNewStrategyScreen() {
+    resetStrategyForm();
+    showView("strategy");
+  }
+
+  function openEditStrategyScreen(strategyId) {
+    const strategy = strategiesCache.find((s) => s.id === strategyId);
+    if (!strategy) return;
+
+    editingStrategyId = strategyId;
+    el("strategyTopbarTitle").textContent = "Edit Strategy";
+    el("saveStrategyBtn").textContent = "Save changes";
+    el("strategyName").value = strategy.name || "";
+    selectDirection(strategy.direction_bias || "both");
+
+    el("strategyRuleRows").innerHTML = "";
+    const rules = strategy.rules || [];
+    if (rules.length === 0) {
+      addRuleRow(null, "");
+    } else {
+      rules.forEach((r) => addRuleRow(r.id, r.text));
+    }
+    hideStrategyError();
+    showView("strategy");
+  }
+
+  async function refreshStrategiesCache() {
+    try {
+      strategiesCache = await fetchJSON(`/strategies?user_id=${USER_ID}&is_active=true`);
+    } catch (err) {
+      // keep whatever was cached before — the picker/filters just won't
+      // reflect the latest save until the next successful load
+    }
+    return strategiesCache;
+  }
+
+  async function handleSaveStrategy() {
+    hideStrategyError();
+
+    const name = el("strategyName").value.trim();
+    if (!name) {
+      showStrategyError("Give this strategy a name.");
+      return;
+    }
+
+    const directionBtn = el("strategyDirection").querySelector(".segment-btn.active");
+    const directionBias = directionBtn ? directionBtn.dataset.value : "both";
+
+    const rules = Array.from(el("strategyRuleRows").querySelectorAll(".rule-row"))
+      .map((row) => ({
+        id: row.dataset.ruleId ? Number(row.dataset.ruleId) : null,
+        text: row.querySelector(".rule-input").value.trim(),
+      }))
+      .filter((r) => r.text.length > 0);
+
+    if (rules.length === 0) {
+      showStrategyError("Add at least one checkable rule.");
+      return;
+    }
+
+    const saveBtn = el("saveStrategyBtn");
+    saveBtn.disabled = true;
+
+    try {
+      const payload = { user_id: USER_ID, name, direction_bias: directionBias, rules };
+      const url = editingStrategyId === null ? "/strategies" : `/strategies/${editingStrategyId}`;
+      const method = editingStrategyId === null ? "POST" : "PATCH";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) message = body.detail;
+        } catch (_) {
+          // response body wasn't JSON — fall back to the generic message
+        }
+        throw new Error(message);
+      }
+      await res.json();
+
+      if (strategyReturnView === "log") {
+        const prevSelected = selectedStrategyValue;
+        await refreshStrategiesCache();
+        renderStrategyPicker();
+        if (prevSelected !== OFFPLAN_VALUE && strategiesCache.some((s) => String(s.id) === prevSelected)) {
+          selectStrategy(prevSelected);
+        }
+        showView("log");
+      } else {
+        await loadDashboard();
+        showView("home");
+      }
+    } catch (err) {
+      showStrategyError(err.message || "Couldn't save this strategy — try again.");
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  function wireStrategyScreen() {
+    el("strategyBackBtn").addEventListener("click", () => {
+      showView(strategyReturnView);
+    });
+
+    el("strategyDirection").querySelectorAll(".segment-btn").forEach((btn) => {
+      btn.addEventListener("click", () => selectDirection(btn.dataset.value));
+    });
+
+    el("addRuleBtn").addEventListener("click", () => {
+      addRuleRow(null, "").querySelector(".rule-input").focus();
+    });
+
+    el("saveStrategyBtn").addEventListener("click", handleSaveStrategy);
+  }
+
   async function init() {
     el("logTradeBtn").addEventListener("click", openLogScreen);
     wireLogScreen();
     wireDetailScreen();
+    wireStrategyScreen();
     await loadDashboard();
   }
 
