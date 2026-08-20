@@ -41,6 +41,7 @@
   let selectedStrategyValue = OFFPLAN_VALUE;
   let dashboardDirty = false;
   let lastLoggedTradeId = null;
+  let lastOffPlanSuggestion = null; // {name, rules} from the most recent off-plan result, or null
 
   // ---- Strategy screen state ----
   let editingStrategyId = null;
@@ -476,6 +477,8 @@
     el("contextNote").value = "";
     hideError();
     renderStrategyPicker();
+    lastOffPlanSuggestion = null;
+    el("setupSuggestionCard").classList.add("hidden");
     showLogSubView("form");
   }
 
@@ -583,8 +586,50 @@
     didWellCard: "didWellCard", didWellText: "didWellText",
   };
 
+  // Off-plan "smart suggestion" — result screen only. Not part of
+  // renderVerdictBlock since it's not part of trade.rule_results and the
+  // trade-detail screen never receives setup_suggestion (POST /trades-only,
+  // single-trade scoped — see main.py).
+  function renderSetupSuggestion(trade) {
+    const card = el("setupSuggestionCard");
+    const rulesEl = el("setupSuggestionRules");
+    const saveBtn = el("saveSuggestedStrategyBtn");
+    lastOffPlanSuggestion = null;
+
+    const suggestion = trade.is_off_plan ? trade.setup_suggestion : null;
+    if (!suggestion) {
+      card.classList.add("hidden");
+      rulesEl.innerHTML = "";
+      rulesEl.classList.add("hidden");
+      saveBtn.classList.add("hidden");
+      return;
+    }
+
+    if (suggestion.is_setup) {
+      lastOffPlanSuggestion = {
+        name: suggestion.suggested_name,
+        rules: suggestion.suggested_rules || [],
+      };
+      el("setupSuggestionText").textContent =
+        "This looks like a repeatable setup — want to save it as a strategy?";
+      rulesEl.innerHTML = lastOffPlanSuggestion.rules
+        .map((r) => `<div class="suggested-rule-item">${escapeHtml(r.text)}</div>`)
+        .join("");
+      rulesEl.classList.remove("hidden");
+      saveBtn.classList.remove("hidden");
+    } else {
+      el("setupSuggestionText").textContent =
+        "This looks like a discretionary or impulse entry rather than a repeatable setup.";
+      rulesEl.innerHTML = "";
+      rulesEl.classList.add("hidden");
+      saveBtn.classList.add("hidden");
+    }
+    card.classList.remove("hidden");
+  }
+
   function renderResult(trade, strategyName) {
     renderVerdictBlock(RESULT_IDS, trade, strategyName);
+    renderSetupSuggestion(trade);
   }
 
   async function handleSubmit() {
@@ -657,6 +702,12 @@
 
     el("viewTradeDetailBtn").addEventListener("click", () => {
       if (lastLoggedTradeId !== null) openTradeDetail(lastLoggedTradeId);
+    });
+
+    el("saveSuggestedStrategyBtn").addEventListener("click", () => {
+      if (!lastOffPlanSuggestion) return;
+      strategyReturnView = "log";
+      openNewStrategyScreenFromSuggestion(lastOffPlanSuggestion.name, lastOffPlanSuggestion.rules);
     });
 
     el("logBackBtn").addEventListener("click", async () => {
@@ -910,6 +961,24 @@
 
   function openNewStrategyScreen() {
     resetStrategyForm();
+    showView("strategy");
+  }
+
+  // Reuses the same create screen as openNewStrategyScreen — prefilled with
+  // a name + rules the off-plan "smart suggestion" pass drafted, still
+  // editable, still a POST (not a PATCH) since nothing has been saved yet.
+  function openNewStrategyScreenFromSuggestion(name, rules) {
+    resetStrategyForm();
+    el("strategyName").value = name || "";
+    el("strategyRuleRows").innerHTML = "";
+    const validRules = (rules || []).filter((r) => r && r.text && r.text.trim());
+    if (validRules.length === 0) {
+      addRuleRow(null, "");
+    } else {
+      // No ids — these are freshly suggested, not existing rule rows, so
+      // the server assigns real ids on save just like any other new rule.
+      validRules.forEach((r) => addRuleRow(null, r.text));
+    }
     showView("strategy");
   }
 

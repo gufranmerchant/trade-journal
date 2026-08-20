@@ -5,12 +5,16 @@ Flow:
   1. receive screenshot + context note + chosen strategy (or none)
   2. parse the screenshot into structured fields          (ai.parse_screenshot)
   3. if a strategy was chosen: check the trade against its rules (ai.check_rules)
-     if not: tag off-plan, no rule check, zero XP
+     if not: tag off-plan, no rule check, zero XP, and ask ai.suggest_setup
+     whether it looks like a repeatable setup worth saving
   4. persist the trade with its verdict
   5. return everything the detail screen renders
 
 Off-plan is represented by strategy_id = None. The app cannot invent a
-strategy — "matched nothing" is stored as nothing.
+strategy — "matched nothing" is stored as nothing. The off-plan
+suggest_setup judgment is advisory and single-trade scoped: it rides along
+in this response only (see the `setup_suggestion` key), never persisted to
+the Trade row and never returned by GET/PATCH /trades/{id}.
 
 GET /trades and GET /users/{user_id}/dashboard read that history back:
 a filterable trade list, and the rolling discipline score + rule-adherence
@@ -266,12 +270,20 @@ async def log_trade(
             context_note=context_note,
         )
 
+        setup_suggestion = None
         if strategy is None:
             # Off-plan: the biggest red flag. No rule check, no XP.
             trade.is_off_plan = True
             trade.coach_note = ("No setup matched this trade. Off-plan entries "
                                 "are worth reviewing — was this a real setup, "
                                 "or an impulse?")
+            # Advisory only, and single-trade scoped (not persisted) — a
+            # failure here must never block logging the off-plan trade
+            # itself, so swallow it and just show no suggestion.
+            try:
+                setup_suggestion = ai.suggest_setup(image_bytes, context_note)
+            except ai.AIResponseError:
+                setup_suggestion = None
         else:
             # Pass 2 — verdict against the user's own rules (screenshot included
             # so chart-structure rules can be checked against the image, not
@@ -300,7 +312,13 @@ async def log_trade(
         # needs entry/exit/SL/TP too, not just the R-multiple/verdict fields,
         # and reusing this helper keeps "everything the detail screen shows"
         # true from the very first render instead of just after a refetch.
-        return _trade_detail_out(trade, strategy.name if strategy else None)
+        # setup_suggestion is bolted on only here, not in _trade_detail_out —
+        # it's a one-time judgment for this submission, not a stored trade
+        # field, so GET/PATCH /trades/{id} never return it.
+        return {
+            **_trade_detail_out(trade, strategy.name if strategy else None),
+            "setup_suggestion": setup_suggestion,
+        }
 
 
 @app.get("/trades")

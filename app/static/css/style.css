@@ -837,6 +837,23 @@ button {
 }
 .coach-note p { margin: 0; font-size: 13px; color: var(--text-primary); line-height: 1.5; }
 
+.suggested-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.suggested-rule-item {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+#setupSuggestionCard .cta-button { margin-top: 12px; }
+
 .result-actions {
   display: flex;
   flex-direction: column;

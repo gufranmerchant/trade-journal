@@ -12,7 +12,14 @@ Pass 2 (verdict): screenshot + parsed trade + the user's OWN rules -> per-rule
                  whether the trader followed the rules they themselves
                  defined. Accountability, not advice.
 
-Both passes force strict JSON out (no prose, no markdown fences), same
+Off-plan advisory (suggest_setup): screenshot + note, off-plan trades only ->
+                 either a drafted name + checkable rules if the trade shows a
+                 genuine repeatable setup, or an honest "not a setup" verdict
+                 if it looks like an impulse/discretionary entry. Never runs
+                 when a strategy was chosen. Advisory only — a failure here
+                 must never block logging the trade itself.
+
+All three passes force strict JSON out (no prose, no markdown fences), same
 discipline as the Mondo finance_ai anomaly checks.
 """
 
@@ -185,6 +192,80 @@ def check_rules(image_bytes: bytes, trade: dict, strategy_name: str, rules: list
     # unconditionally so a bad verdict can be diagnosed from the server log.
     logger.info("check_rules raw model output: %r", raw_content)
     return _strip_to_json(raw_content)
+
+
+SUGGEST_SETUP_SYSTEM = """You are a trading-discipline analyst. You are given an \
+off-plan trade — a screenshot of the chart and the trader's own note — that \
+matched none of the trader's defined strategies. Decide honestly whether this \
+trade reflects a coherent, REPEATABLE setup (identifiable entry logic, chart \
+structure, and conditions someone could check on a future trade) or whether \
+it looks like an impulse, random, or purely discretionary entry with no \
+repeatable process.
+
+Do not default to yes. Most off-plan trades are impulse trades — say so \
+plainly when that is what the evidence shows. Only say a setup exists when \
+you can point to specific, checkable structure in the chart and note (e.g. a \
+break-and-retest, a liquidity sweep, a specific candle pattern, a defined \
+risk rule) — not just "price went up and I bought."
+
+Return STRICT JSON, no prose, no fences. If it is NOT a repeatable setup:
+{"is_setup": false}
+If it IS a repeatable setup:
+{
+  "is_setup": true,
+  "suggested_name": string,
+  "suggested_rules": [{"id": int, "text": string}, ...]
+}
+suggested_name should be short (e.g. "Liquidity Sweep Reversal"). \
+suggested_rules should be 2-5 checkable lines describing what the trader \
+actually did, not generic trading advice."""
+
+
+def _normalize_setup_suggestion(parsed: dict) -> dict:
+    """Defensive coercion — the model's output feeds straight into a
+    strategy-creation prefill, so a half-formed "setup" (no name, no rules)
+    is treated as no suggestion at all rather than shown as one."""
+    if not parsed.get("is_setup"):
+        return {"is_setup": False}
+
+    name = str(parsed.get("suggested_name") or "").strip()
+    rules = []
+    for r in parsed.get("suggested_rules") or []:
+        text = str((r or {}).get("text") or "").strip()
+        if text:
+            rules.append({"id": len(rules) + 1, "text": text})
+
+    if not name or not rules:
+        return {"is_setup": False}
+
+    return {"is_setup": True, "suggested_name": name, "suggested_rules": rules}
+
+
+def suggest_setup(image_bytes: bytes, context_note: str) -> dict:
+    """Off-plan-only advisory pass — screenshot + note -> either a drafted
+    repeatable-setup name/rules, or an honest "not a setup" verdict. Single-
+    trade version: this judgment isn't persisted or reused across trades."""
+    b64 = base64.b64encode(image_bytes).decode()
+    resp = client.chat.completions.create(
+        model=VISION_MODEL,
+        temperature=0.2,
+        reasoning_effort="none",
+        messages=[
+            {"role": "system", "content": SUGGEST_SETUP_SYSTEM},
+            {"role": "user", "content": [
+                {"type": "text",
+                 "text": f"Trader's note about this trade: {context_note!r}. "
+                         f"Judge whether this is a repeatable setup."},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            ]},
+        ],
+    )
+    raw_content = resp.choices[0].message.content
+    # INFO, not DEBUG — same rationale as the other passes: always visible
+    # so a bad or surprising judgment can be diagnosed from the server log.
+    logger.info("suggest_setup raw model output: %r", raw_content)
+    return _normalize_setup_suggestion(_strip_to_json(raw_content))
 
 
 # Flat, dumb-simple v1 scoring. Tuning the curve is deliberately deferred.
