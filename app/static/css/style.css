@@ -1040,6 +1040,88 @@ select.text-input {
 }
 .strategy-add-btn:hover { border-color: var(--teal); background: var(--teal-tint); }
 
+/* ---------- Danger / delete affordances ---------- */
+.icon-button-danger { background: var(--coral-bg); color: var(--coral); }
+.icon-button-danger:hover { background: #F5DCD1; }
+
+.danger-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--coral);
+  background: none;
+  border: none;
+  padding: 14px 0 0;
+  cursor: pointer;
+}
+.danger-link:hover { text-decoration: underline; }
+
+.danger-button {
+  width: 100%;
+  background: var(--coral);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.danger-button:hover { background: #7D3116; }
+.danger-button:active { transform: scale(0.98); }
+.danger-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Confirm modal ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 44, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 22px 20px 20px;
+  border-radius: var(--radius-lg);
+}
+
+.modal-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.modal-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.modal-actions .secondary-button,
+.modal-actions .danger-button {
+  width: auto;
+  flex: 1;
+}
+
+@media (min-width: 480px) {
+  .modal-overlay { align-items: center; }
+}
+
 /* ---------- Responsive polish ---------- */
 @media (min-width: 480px) {
   .ring-wrap { width: 192px; height: 192px; }

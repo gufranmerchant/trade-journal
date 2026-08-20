@@ -14,11 +14,15 @@ strategy — "matched nothing" is stored as nothing.
 
 GET /trades and GET /users/{user_id}/dashboard read that history back:
 a filterable trade list, and the rolling discipline score + rule-adherence
-streak the dashboard renders.
+streak the dashboard renders. DELETE /trades/{id} hard-deletes a trade —
+nothing else references a trade by id, so there's no soft-delete concern.
 
 POST/GET/PATCH /strategies manage the rulebooks trades get checked against.
 Rule ids are stable across edits — see _apply_rule_updates — because
 Trade.rule_results and any future per-rule stats are keyed on them.
+Strategies are soft-deleted only (PATCH .../is_active=false) — a trade's
+rule_results reference the strategy's rules, so removing a strategy must
+never break the history of trades already checked against it.
 
 POST /users creates the user row everything else hangs off of (email must
 be unique) — there's no auth yet, so this is just enough to seed data.
@@ -27,7 +31,7 @@ be unique) — there's no auth yet, so this is just enough to seed data.
 import logging
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -376,6 +380,29 @@ def update_trade(trade_id: int, payload: TradeUpdate):
             strategy_name = strategy.name if strategy else None
 
         return _trade_detail_out(trade, strategy_name)
+
+
+@app.delete("/trades/{trade_id}")
+def delete_trade(trade_id: int, user_id: int):
+    """Hard delete — unlike strategies, a trade has no rulebook other trades
+    depend on, so there's nothing to preserve by soft-deleting it."""
+    with Session(engine) as s:
+        trade = s.get(Trade, trade_id)
+        if trade is None or trade.user_id != user_id:
+            raise HTTPException(404, "Trade not found for this user")
+
+        # xp is a running total stored on the user row, not derived on read
+        # like discipline_score/streak are — so undo what this trade
+        # contributed before removing it, or the XP would linger forever.
+        if trade.xp_earned:
+            user = s.get(User, user_id)
+            if user:
+                user.xp = max(0, user.xp - trade.xp_earned)
+
+        s.delete(trade)
+        s.commit()
+
+    return Response(status_code=204)
 
 
 @app.get("/users/{user_id}/dashboard")

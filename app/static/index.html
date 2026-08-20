@@ -44,7 +44,15 @@
         </svg>
       </button>
       <span class="topbar-title" id="detailTopbarTitle">Trade</span>
-      <span class="topbar-spacer" aria-hidden="true"></span>
+      <button class="icon-button icon-button-danger" id="deleteTradeBtn" type="button" aria-label="Delete trade">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"></path>
+          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          <path d="M10 11v6"></path>
+          <path d="M14 11v6"></path>
+        </svg>
+      </button>
     </header>
 
     <header class="topbar hidden" id="strategyTopbar">
@@ -378,6 +386,7 @@
         </div>
 
         <button type="button" class="cta-button" id="saveStrategyBtn">Save strategy</button>
+        <button type="button" class="danger-link hidden" id="deleteStrategyBtn">Remove strategy</button>
       </section>
     </main>
 
@@ -389,6 +398,20 @@
         </svg>
         Log trade from screenshot
       </button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+    <div class="modal-card card">
+      <h3 class="modal-title" id="confirmModalTitle"></h3>
+      <p class="modal-message" id="confirmModalMessage"></p>
+      <div class="error-banner hidden" id="confirmModalErrorBanner" role="alert">
+        <span id="confirmModalErrorText"></span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary-button" id="confirmModalCancel">Cancel</button>
+        <button type="button" class="danger-button" id="confirmModalConfirm">Delete</button>
+      </div>
     </div>
   </div>
 

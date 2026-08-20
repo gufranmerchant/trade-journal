@@ -799,12 +799,40 @@
     }
   }
 
+  async function handleDeleteTrade() {
+    if (currentDetailTradeId === null) return;
+    const res = await fetch(`/trades/${currentDetailTradeId}?user_id=${USER_ID}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) message = body.detail;
+      } catch (_) {
+        // response body wasn't JSON — fall back to the generic message
+      }
+      throw new Error(message);
+    }
+    dashboardDirty = true;
+    await refreshIfDirty();
+    showView("home");
+  }
+
   function wireDetailScreen() {
     el("detailBackBtn").addEventListener("click", async () => {
       await refreshIfDirty();
       showView("home");
     });
     el("saveTradeBtn").addEventListener("click", handleSaveTrade);
+    el("deleteTradeBtn").addEventListener("click", () => {
+      openConfirmModal({
+        title: "Delete this trade?",
+        message: "This can't be undone.",
+        confirmLabel: "Delete",
+        onConfirm: handleDeleteTrade,
+      });
+    });
     ["editEntryPrice", "editExitPrice", "editSlPrice"].forEach((id) => {
       el(id).addEventListener("input", updateRRDisplay);
     });
@@ -858,6 +886,7 @@
     el("strategyRuleRows").innerHTML = "";
     addRuleRow(null, "");
     hideStrategyError();
+    el("deleteStrategyBtn").classList.add("hidden");
   }
 
   function openNewStrategyScreen() {
@@ -883,6 +912,7 @@
       rules.forEach((r) => addRuleRow(r.id, r.text));
     }
     hideStrategyError();
+    el("deleteStrategyBtn").classList.remove("hidden");
     showView("strategy");
   }
 
@@ -964,6 +994,39 @@
     }
   }
 
+  // Soft-delete only — trades already checked against this strategy keep
+  // their strategy_id and rule_results, they just won't see it in the
+  // active-strategy chips/picker anymore. Mirrors the existing PATCH
+  // .../is_active toggle, not a new deletion path on the backend.
+  async function handleDeleteStrategy() {
+    if (editingStrategyId === null) return;
+    const res = await fetch(`/strategies/${editingStrategyId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: USER_ID, is_active: false }),
+    });
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) message = body.detail;
+      } catch (_) {
+        // response body wasn't JSON — fall back to the generic message
+      }
+      throw new Error(message);
+    }
+    await res.json();
+
+    if (strategyReturnView === "log") {
+      await refreshStrategiesCache();
+      renderStrategyPicker();
+      showView("log");
+    } else {
+      await loadDashboard();
+      showView("home");
+    }
+  }
+
   function wireStrategyScreen() {
     el("strategyBackBtn").addEventListener("click", () => {
       showView(strategyReturnView);
@@ -978,6 +1041,62 @@
     });
 
     el("saveStrategyBtn").addEventListener("click", handleSaveStrategy);
+
+    el("deleteStrategyBtn").addEventListener("click", () => {
+      openConfirmModal({
+        title: "Remove this strategy?",
+        message: "It'll be hidden from your setups, but past trades keep their results.",
+        confirmLabel: "Remove",
+        onConfirm: handleDeleteStrategy,
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Shared confirm modal — used by both the trade-delete and
+  // strategy-remove flows below. `onConfirm` does the actual request; if it
+  // throws, the modal stays open (with whatever error the caller surfaced)
+  // instead of silently closing on a failed delete.
+  // ---------------------------------------------------------------------
+
+  let confirmModalOnConfirm = null;
+
+  function openConfirmModal({ title, message, confirmLabel = "Delete", onConfirm }) {
+    el("confirmModalTitle").textContent = title;
+    el("confirmModalMessage").textContent = message;
+    el("confirmModalErrorBanner").classList.add("hidden");
+    const confirmBtn = el("confirmModalConfirm");
+    confirmBtn.textContent = confirmLabel;
+    confirmBtn.disabled = false;
+    confirmModalOnConfirm = onConfirm;
+    el("confirmModal").classList.remove("hidden");
+  }
+
+  function closeConfirmModal() {
+    el("confirmModal").classList.add("hidden");
+    confirmModalOnConfirm = null;
+  }
+
+  function wireConfirmModal() {
+    el("confirmModalCancel").addEventListener("click", closeConfirmModal);
+    el("confirmModal").addEventListener("click", (e) => {
+      if (e.target.id === "confirmModal") closeConfirmModal();
+    });
+    el("confirmModalConfirm").addEventListener("click", async () => {
+      if (!confirmModalOnConfirm) return;
+      const confirmBtn = el("confirmModalConfirm");
+      confirmBtn.disabled = true;
+      el("confirmModalErrorBanner").classList.add("hidden");
+      try {
+        await confirmModalOnConfirm();
+        closeConfirmModal();
+      } catch (err) {
+        el("confirmModalErrorText").textContent =
+          err.message || "Something went wrong — try again.";
+        el("confirmModalErrorBanner").classList.remove("hidden");
+        confirmBtn.disabled = false;
+      }
+    });
   }
 
   async function init() {
@@ -985,6 +1104,7 @@
     wireLogScreen();
     wireDetailScreen();
     wireStrategyScreen();
+    wireConfirmModal();
     await loadDashboard();
   }
 
