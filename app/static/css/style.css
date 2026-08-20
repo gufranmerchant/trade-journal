@@ -1040,6 +1040,62 @@ select.text-input {
 }
 .strategy-add-btn:hover { border-color: var(--teal); background: var(--teal-tint); }
 
+/* ---------- Manage-strategies chip + view ---------- */
+.chip-manage-btn { flex-shrink: 0; }
+
+.manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  transition: opacity 0.15s ease;
+}
+.manage-row.inactive { opacity: 0.55; }
+
+.manage-row-main { flex: 1; min-width: 0; }
+.manage-row-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.manage-row-hint { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.toggle-switch {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  background: var(--card-border);
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+.toggle-switch.on { background: var(--teal); }
+
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(44, 44, 42, 0.25);
+  transition: left 0.15s ease;
+}
+.toggle-switch.on .toggle-knob { left: 21px; }
+
 /* ---------- Danger / delete affordances ---------- */
 .icon-button-danger { background: var(--coral-bg); color: var(--coral); }
 .icon-button-danger:hover { background: #F5DCD1; }

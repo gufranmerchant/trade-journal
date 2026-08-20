@@ -32,6 +32,7 @@
   const iconCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
   const iconCross = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
   const iconEdit = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+  const iconGear = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
   // ---- Log-trade screen state ----
   let strategiesCache = [];
@@ -43,7 +44,10 @@
 
   // ---- Strategy screen state ----
   let editingStrategyId = null;
-  let strategyReturnView = "home";
+  let strategyReturnView = "home"; // "home" | "log" | "manage"
+
+  // ---- Manage-strategies screen state ----
+  let manageStrategiesCache = [];
 
   // ---- Trade-detail screen state ----
   let currentDetailTradeId = null;
@@ -180,6 +184,19 @@
   function buildFilters(strategies, trades, onChange) {
     const container = el("filters");
     container.innerHTML = "";
+
+    // Manage-strategies entry point — sits before "All" (the "+" new-strategy
+    // chip stays at the end) and is icon-only/circular so it reads as a
+    // settings control, not another filter option.
+    const manageBtn = document.createElement("button");
+    manageBtn.type = "button";
+    manageBtn.className = "icon-button chip-manage-btn";
+    manageBtn.setAttribute("aria-label", "Manage strategies");
+    manageBtn.innerHTML = iconGear;
+    manageBtn.addEventListener("click", () => {
+      openManageStrategiesScreen();
+    });
+    container.appendChild(manageBtn);
 
     const chips = [
       { key: "all", label: "All", test: () => true },
@@ -333,10 +350,12 @@
     el("logView").classList.toggle("hidden", view !== "log");
     el("detailView").classList.toggle("hidden", view !== "detail");
     el("strategyView").classList.toggle("hidden", view !== "strategy");
+    el("manageView").classList.toggle("hidden", view !== "manage");
     el("homeTopbar").classList.toggle("hidden", view !== "home");
     el("logTopbar").classList.toggle("hidden", view !== "log");
     el("detailTopbar").classList.toggle("hidden", view !== "detail");
     el("strategyTopbar").classList.toggle("hidden", view !== "strategy");
+    el("manageTopbar").classList.toggle("hidden", view !== "manage");
     el("homeCta").classList.toggle("hidden", view !== "home");
     window.scrollTo(0, 0);
   }
@@ -895,7 +914,11 @@
   }
 
   function openEditStrategyScreen(strategyId) {
-    const strategy = strategiesCache.find((s) => s.id === strategyId);
+    // strategiesCache is active-only (used by the dashboard/log picker);
+    // manageStrategiesCache includes inactive ones — a strategy opened for
+    // edit from the Manage screen may only exist in the latter.
+    const strategy = strategiesCache.find((s) => s.id === strategyId)
+      || manageStrategiesCache.find((s) => s.id === strategyId);
     if (!strategy) return;
 
     editingStrategyId = strategyId;
@@ -924,6 +947,29 @@
       // reflect the latest save until the next successful load
     }
     return strategiesCache;
+  }
+
+  // Shared by handleSaveStrategy and handleDeleteStrategy — both need to
+  // return to wherever the edit screen was opened from (log picker,
+  // Manage Strategies, or the dashboard) with that view's data refreshed.
+  async function returnFromStrategyEdit() {
+    if (strategyReturnView === "log") {
+      const prevSelected = selectedStrategyValue;
+      await refreshStrategiesCache();
+      renderStrategyPicker();
+      if (prevSelected !== OFFPLAN_VALUE && strategiesCache.some((s) => String(s.id) === prevSelected)) {
+        selectStrategy(prevSelected);
+      }
+      showView("log");
+    } else if (strategyReturnView === "manage") {
+      await refreshStrategiesCache();
+      await loadManageStrategies();
+      dashboardDirty = true;
+      showView("manage");
+    } else {
+      await loadDashboard();
+      showView("home");
+    }
   }
 
   async function handleSaveStrategy() {
@@ -974,19 +1020,7 @@
         throw new Error(message);
       }
       await res.json();
-
-      if (strategyReturnView === "log") {
-        const prevSelected = selectedStrategyValue;
-        await refreshStrategiesCache();
-        renderStrategyPicker();
-        if (prevSelected !== OFFPLAN_VALUE && strategiesCache.some((s) => String(s.id) === prevSelected)) {
-          selectStrategy(prevSelected);
-        }
-        showView("log");
-      } else {
-        await loadDashboard();
-        showView("home");
-      }
+      await returnFromStrategyEdit();
     } catch (err) {
       showStrategyError(err.message || "Couldn't save this strategy — try again.");
     } finally {
@@ -1016,15 +1050,7 @@
       throw new Error(message);
     }
     await res.json();
-
-    if (strategyReturnView === "log") {
-      await refreshStrategiesCache();
-      renderStrategyPicker();
-      showView("log");
-    } else {
-      await loadDashboard();
-      showView("home");
-    }
+    await returnFromStrategyEdit();
   }
 
   function wireStrategyScreen() {
@@ -1049,6 +1075,123 @@
         confirmLabel: "Remove",
         onConfirm: handleDeleteStrategy,
       });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Manage-strategies screen — lists ALL of the user's strategies, active
+  // and inactive, and is the only place an inactive one can be reactivated
+  // (deactivating from here, or via "Remove strategy" on the edit screen,
+  // is otherwise a dead end). GET /strategies with no is_active filter
+  // already returns everything, so no new backend endpoint is needed.
+  // ---------------------------------------------------------------------
+
+  function hideManageError() {
+    el("manageErrorBanner").classList.add("hidden");
+  }
+
+  function showManageError(message) {
+    el("manageErrorText").textContent = message;
+    el("manageErrorBanner").classList.remove("hidden");
+  }
+
+  async function loadManageStrategies() {
+    try {
+      manageStrategiesCache = await fetchJSON(`/strategies?user_id=${USER_ID}`);
+    } catch (err) {
+      manageStrategiesCache = [];
+    }
+    renderManageStrategyList();
+  }
+
+  async function setStrategyActive(strategyId, isActive) {
+    const res = await fetch(`/strategies/${strategyId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: USER_ID, is_active: isActive }),
+    });
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) message = body.detail;
+      } catch (_) {
+        // response body wasn't JSON — fall back to the generic message
+      }
+      throw new Error(message);
+    }
+    await res.json();
+    dashboardDirty = true;
+    await refreshStrategiesCache();
+    await loadManageStrategies();
+  }
+
+  function renderManageStrategyList() {
+    const container = el("manageStrategyList");
+    container.innerHTML = "";
+
+    if (manageStrategiesCache.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state card">
+          <h3>No strategies yet</h3>
+          <p>Create one from the "+" on your dashboard's filter row.</p>
+        </div>`;
+      return;
+    }
+
+    manageStrategiesCache.forEach((s) => {
+      const ruleCount = (s.rules || []).length;
+      const row = document.createElement("div");
+      row.className = "manage-row card" + (s.is_active ? "" : " inactive");
+      row.innerHTML = `
+        <div class="manage-row-main">
+          <div class="manage-row-name">${escapeHtml(s.name)}</div>
+          <div class="manage-row-hint">${ruleCount} rule${ruleCount === 1 ? "" : "s"}${s.is_active ? "" : " · Inactive"}</div>
+        </div>
+        <button type="button" class="strategy-edit-btn" aria-label="Edit ${escapeHtml(s.name)}">${iconEdit}</button>
+        <button type="button" class="toggle-switch ${s.is_active ? "on" : "off"}" role="switch"
+                aria-checked="${s.is_active}" aria-label="${s.is_active ? "Deactivate" : "Reactivate"} ${escapeHtml(s.name)}">
+          <span class="toggle-knob"></span>
+        </button>
+      `;
+
+      row.querySelector(".strategy-edit-btn").addEventListener("click", () => {
+        strategyReturnView = "manage";
+        openEditStrategyScreen(s.id);
+      });
+
+      row.querySelector(".toggle-switch").addEventListener("click", () => {
+        hideManageError();
+        if (s.is_active) {
+          openConfirmModal({
+            title: "Deactivate this strategy?",
+            message: "It'll be hidden from your setups but past trades keep their results.",
+            confirmLabel: "Deactivate",
+            onConfirm: () => setStrategyActive(s.id, false),
+          });
+        } else {
+          // Reactivating just undoes a hide — no data loss, so no confirm
+          // dialog, unlike deactivating.
+          setStrategyActive(s.id, true).catch((err) => {
+            showManageError(err.message || "Couldn't reactivate — try again.");
+          });
+        }
+      });
+
+      container.appendChild(row);
+    });
+  }
+
+  async function openManageStrategiesScreen() {
+    hideManageError();
+    showView("manage");
+    await loadManageStrategies();
+  }
+
+  function wireManageScreen() {
+    el("manageBackBtn").addEventListener("click", async () => {
+      await refreshIfDirty();
+      showView("home");
     });
   }
 
@@ -1104,6 +1247,7 @@
     wireLogScreen();
     wireDetailScreen();
     wireStrategyScreen();
+    wireManageScreen();
     wireConfirmModal();
     await loadDashboard();
   }

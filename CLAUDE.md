@@ -117,8 +117,12 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   the next unused id; omitting a rule entry drops it. This matters because
   `Trade.rule_results` and the rule-checker key off rule id — deactivating and
   recreating ids on every edit would silently break that link to trade history.
-- There's no hard delete — deactivate via `PATCH .../is_active=false` instead, matching
-  the model's existing soft-delete field.
+- Strategies have no hard delete — deactivate via `PATCH .../is_active=false` instead,
+  matching the model's existing soft-delete field, so a trade's stored `rule_results`
+  keeps referencing a real (if inactive) rulebook. Trades themselves *are* hard-deleted
+  (`DELETE /trades/{id}`), since nothing else references a trade by id.
+  `GET /strategies?user_id=` with no `is_active` filter returns both active and inactive
+  strategies — the only way to see (and reactivate) a deactivated one.
 
 ### Frontend (`app/static/`)
 
@@ -148,8 +152,23 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   `/strategies` (create) or PATCHes `/strategies/{id}` (edit), sending each rule's
   existing `id` (or none, for a new rule) so `_apply_rule_updates` keeps ids stable —
   rows are just `{id, text}` in the DOM, keyed by `data-rule-id`. Which screen "back"/save
-  returns to (dashboard vs. upload screen) is tracked in `strategyReturnView` since the
-  screen is reachable from both places.
+  returns to (dashboard, upload screen, or Manage Strategies) is tracked in
+  `strategyReturnView`, since the screen is reachable from all three places.
+- A gear icon at the *start* of the dashboard filter-chip row (before "All"; the "+"
+  new-strategy chip stays at the end) opens Manage Strategies — the only screen that
+  lists inactive strategies alongside active ones (fetched via `GET /strategies?user_id=`
+  with no `is_active` filter) and the only way to reactivate one, since deactivating
+  drops a strategy out of every other picker/chip with no other way back. Each row has an
+  edit (pencil) link to the same create/edit screen plus an active↔inactive toggle;
+  toggling an active strategy off confirms first (shared confirm-modal component, same
+  one the trade-delete flow uses), toggling an inactive one back on is immediate since
+  it's non-destructive. The existing "Remove strategy" control on the edit screen still
+  works the same way (deactivate, with confirmation) — Manage Strategies doesn't replace
+  it, just adds the missing reactivate path and a more discoverable entry point.
+- Trade delete: a trash icon on the trade-detail screen confirms, then hard-deletes via
+  `DELETE /trades/{id}`, which also decrements the user's `xp` by whatever that trade had
+  earned — `xp` is a running total stored on `User`, not derived on read like
+  `discipline_score`/streak are, so a deleted trade's XP would otherwise linger forever.
 
 ## Conventions worth knowing
 
