@@ -4,10 +4,13 @@ The two-pass AI pipeline — the heart of the app.
 Pass 1 (parse):  trade screenshot + one line of context -> structured fields.
                  Same shape as ledger_ocr.py, pointed at a chart not a receipt.
 
-Pass 2 (verdict): parsed trade + the user's OWN rules -> per-rule pass/fail,
-                 a coach note, and XP. The model never judges whether the
-                 trade was "good" — only whether the trader followed the rules
-                 they themselves defined. Accountability, not advice.
+Pass 2 (verdict): screenshot + parsed trade + the user's OWN rules -> per-rule
+                 pass/fail, a coach note, and XP. Also given the screenshot
+                 (not just Pass 1's extracted fields) so chart-structure rules
+                 can be checked against the image, not just the trader's note.
+                 The model never judges whether the trade was "good" — only
+                 whether the trader followed the rules they themselves
+                 defined. Accountability, not advice.
 
 Both passes force strict JSON out (no prose, no markdown fences), same
 discipline as the Mondo finance_ai anomaly checks.
@@ -38,8 +41,7 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
 # deprecated by Groq (2026-06-17, shut off by August); migrated to their
 # recommended replacements. qwen3.6-27b is Groq's other multimodal option
 # besides the now-deprecated llama-4 vision models.
-VISION_MODEL = "qwen/qwen3.6-27b"  # vision-capable
-TEXT_MODEL = "openai/gpt-oss-120b"
+VISION_MODEL = "qwen/qwen3.6-27b"  # vision-capable, used for both passes now
 
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?(</think>|$)", re.DOTALL)
@@ -120,10 +122,15 @@ def parse_screenshot(image_bytes: bytes, context_note: str) -> dict:
 
 
 VERDICT_SYSTEM = """You are a trading-discipline coach. You are given a trade \
-and the trader's OWN rules for the setup they say they used. Your job is NOT \
-to judge whether the trade was smart, or to give trading advice. Your ONLY \
-job is to check, rule by rule, whether the trader followed the rules THEY \
-defined.
+screenshot, its extracted data, and the trader's OWN rules for the setup they \
+say they used. Your job is NOT to judge whether the trade was smart, or to \
+give trading advice. Your ONLY job is to check, rule by rule, whether the \
+trader followed the rules THEY defined.
+
+Some rules describe chart structure (e.g. a trendline break, a retest, a \
+confirmation candle) — look at the screenshot itself to verify those, not \
+just the extracted numbers or the trader's note. The screenshot is your \
+primary evidence for anything visual; the note is context, not proof.
 
 Core principle: a winning trade that broke a rule still failed the rule. The \
 outcome never validates the process. Be honest but not harsh — name one thing \
@@ -135,12 +142,18 @@ Return STRICT JSON, no prose, no fences:
   "coach_note": string,   // 1-2 sentences, plain and direct
   "did_well": string      // one genuine positive, or "" if none
 }
-Evaluate every rule you are given. If the evidence for a rule is not present, \
-mark it not passed rather than assuming."""
+Evaluate every rule you are given. If the evidence for a rule — in the chart \
+or the data — is not present, mark it not passed rather than assuming."""
 
 
-def check_rules(trade: dict, strategy_name: str, rules: list, context_note: str) -> dict:
-    """Pass 2 — parsed trade + user's rules -> per-rule verdict + coach note."""
+def check_rules(image_bytes: bytes, trade: dict, strategy_name: str, rules: list, context_note: str) -> dict:
+    """Pass 2 — screenshot + parsed trade + user's rules -> per-rule verdict.
+
+    Takes the screenshot (not just Pass 1's extracted fields) so chart-
+    structure rules — trendline breaks, retests, confirmation candles — can
+    actually be checked against the image instead of only the trader's note.
+    """
+    b64 = base64.b64encode(image_bytes).decode()
     rules_text = "\n".join(f'- (id {r["id"]}) {r["text"]}' for r in rules)
     payload = {
         "setup": strategy_name,
@@ -149,21 +162,29 @@ def check_rules(trade: dict, strategy_name: str, rules: list, context_note: str)
         "rules": rules,
     }
     resp = client.chat.completions.create(
-        model=TEXT_MODEL,
+        model=VISION_MODEL,
         temperature=0.2,
-        # gpt-oss-120b doesn't support reasoning_effort="none" (only
-        # low/medium/high, default medium) — use "low" plus reasoning_format
-        # "hidden" so its own reasoning trace never leaks into `content`.
-        reasoning_effort="low",
-        reasoning_format="hidden",
+        # Same reasoning_effort choice as parse_screenshot, and for the same
+        # reason: letting qwen3.6-27b "think" on this model can burn its
+        # whole output budget and leave content empty.
+        reasoning_effort="none",
         messages=[
             {"role": "system", "content": VERDICT_SYSTEM},
-            {"role": "user", "content":
-                f"Setup: {strategy_name}\nRules:\n{rules_text}\n\n"
-                f"Trade data + note (JSON):\n{json.dumps(payload)}"},
+            {"role": "user", "content": [
+                {"type": "text",
+                 "text": f"Setup: {strategy_name}\nRules:\n{rules_text}\n\n"
+                         f"Trade data + note (JSON):\n{json.dumps(payload)}"},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            ]},
         ],
     )
-    return _strip_to_json(resp.choices[0].message.content)
+    raw_content = resp.choices[0].message.content
+    # INFO, not DEBUG — same rationale as parse_screenshot's logging: this is
+    # the one place the exact verdict-model output is visible, logged
+    # unconditionally so a bad verdict can be diagnosed from the server log.
+    logger.info("check_rules raw model output: %r", raw_content)
+    return _strip_to_json(raw_content)
 
 
 # Flat, dumb-simple v1 scoring. Tuning the curve is deliberately deferred.

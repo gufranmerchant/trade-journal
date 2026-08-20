@@ -218,6 +218,7 @@ def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
         "rules_passed": trade.rules_passed,
         "rules_total": trade.rules_total,
         "coach_note": trade.coach_note,
+        "did_well": trade.did_well,
         "xp_earned": trade.xp_earned,
         "created_at": trade.created_at,
     }
@@ -268,9 +269,11 @@ async def log_trade(
                                 "are worth reviewing — was this a real setup, "
                                 "or an impulse?")
         else:
-            # Pass 2 — verdict against the user's own rules
+            # Pass 2 — verdict against the user's own rules (screenshot included
+            # so chart-structure rules can be checked against the image, not
+            # just the extracted fields)
             try:
-                verdict = ai.check_rules(parsed, strategy.name, strategy.rules, context_note)
+                verdict = ai.check_rules(image_bytes, parsed, strategy.name, strategy.rules, context_note)
             except ai.AIResponseError:
                 raise HTTPException(502, "Couldn't check this trade against your rules — try again.")
             score = ai.score_trade(verdict)
@@ -278,9 +281,8 @@ async def log_trade(
             trade.rules_passed = score["rules_passed"]
             trade.rules_total = score["rules_total"]
             trade.xp_earned = score["xp_earned"]
-            note = verdict.get("coach_note", "")
-            well = verdict.get("did_well", "")
-            trade.coach_note = f"{note} {('Well done: ' + well) if well else ''}".strip()
+            trade.coach_note = verdict.get("coach_note", "")
+            trade.did_well = verdict.get("did_well", "")
 
             user = s.get(User, user_id)
             if user:

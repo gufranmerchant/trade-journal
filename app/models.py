@@ -100,6 +100,7 @@ class Trade(Base):
     rules_passed = Column(Integer, default=0)
     rules_total = Column(Integer, default=0)
     coach_note = Column(Text)
+    did_well = Column(Text)                           # one genuine positive from the verdict, or "" if none
     xp_earned = Column(Integer, default=0)
 
     screenshot_path = Column(String)

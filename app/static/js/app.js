@@ -510,6 +510,7 @@
     const ruleList = el(ids.ruleList);
     const xpBadge = el(ids.xpBadge);
     const coachCard = el(ids.coachCard);
+    const didWellCard = el(ids.didWellCard);
 
     if (trade.is_off_plan) {
       offplanBanner.classList.remove("hidden");
@@ -519,6 +520,7 @@
       ruleList.innerHTML = "";
       xpBadge.classList.add("hidden");
       coachCard.classList.add("hidden");
+      didWellCard.classList.add("hidden");
     } else {
       offplanBanner.classList.add("hidden");
 
@@ -539,6 +541,13 @@
 
       el(ids.coachText).textContent = trade.coach_note || "";
       coachCard.classList.remove("hidden");
+
+      if (trade.did_well) {
+        el(ids.didWellText).textContent = trade.did_well;
+        didWellCard.classList.remove("hidden");
+      } else {
+        didWellCard.classList.add("hidden");
+      }
     }
   }
 
@@ -552,6 +561,7 @@
     offplanBanner: "offplanBanner", offplanText: "offplanBannerText",
     ruleList: "ruleList", xpBadge: "xpEarnedBadge",
     coachCard: "coachNoteCard", coachText: "coachNoteText",
+    didWellCard: "didWellCard", didWellText: "didWellText",
   };
 
   function renderResult(trade, strategyName) {
@@ -656,6 +666,7 @@
     offplanBanner: "detailOffplanBanner", offplanText: "detailOffplanText",
     ruleList: "detailRuleList", xpBadge: "detailXpBadge",
     coachCard: "detailCoachCard", coachText: "detailCoachText",
+    didWellCard: "detailDidWellCard", didWellText: "detailDidWellText",
   };
 
   function renderDetailVerdict(trade, strategyName) {
