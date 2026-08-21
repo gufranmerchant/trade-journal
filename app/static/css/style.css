@@ -1,38 +1,141 @@
 /* ---------------------------------------------------------------------
    Design tokens — see CLAUDE.md / design brief. Keep colors here only;
    the ring, teal, purple and coral each carry one meaning and only one.
+
+   Light values live on bare :root. Dark mode is a token swap, not an
+   inversion: solid-fill tokens used with white text on top (--teal,
+   --purple, --coral-strong) stay close to their light values — mid-tone
+   saturated colors already read as vibrant against a dark surround, and
+   drastically brightening them would break white-text contrast on the
+   buttons/badges that use them. The "text/border on a tinted pastel
+   surface" tokens (--teal-dark, --coral, --success, --warning) are the
+   ones that actually need to invert to a BRIGHT variant in dark mode,
+   since their light-mode values are dark colors chosen for a pale bg and
+   would be unreadable on a dark one. --coral carries both roles in light
+   mode (pastel text AND the solid danger-button fill); dark mode splits
+   that into --coral (bright, text/border role) and --coral-strong (stays
+   dark, solid-fill-with-white-text role) so neither job is compromised.
 --------------------------------------------------------------------- */
 :root {
   --bg: #F1EFE8;
   --card: #FFFFFF;
   --card-border: #E8E4D9;
+  --card-border-hover: #D8D3C4;
 
   --teal: #1D9E75;
   --teal-dark: #17835F;
   --teal-tint: #E3F3EC;
+  --teal-tint-hover: #D8EDE3;
+  --teal-glow: rgba(29, 158, 117, 0.28);
 
   --purple: #7F77DD;
   --purple-tint: #ECEBFA;
 
   --coral: #993C1D;
   --coral-bg: #FAECE7;
+  --coral-bg-hover: #F5DCD1;
+  --coral-strong: #993C1D;
+  --coral-strong-hover: #7D3116;
 
   --success: #0F6E56;
   --success-bg: #E3F3EC;
+  --success-strong: #0F6E56;
 
   --warning: #854F0B;
   --warning-bg: #FBF0DD;
+  --warning-strong: #854F0B;
 
   --text-primary: #2C2C2A;
   --text-secondary: #5F5E5A;
   --text-muted: #888780;
+  --text-on-accent: #FFFFFF;
 
   --ring-track: #E8E4D9;
+
+  --overlay-scrim: rgba(44, 44, 42, 0.45);
+  --photo-scrim: rgba(28, 26, 22, 0.65);
+  --knob-color: #FFFFFF;
+  --knob-shadow: 0 1px 2px rgba(44, 44, 42, 0.25);
 
   --radius: 12px;
   --radius-lg: 20px;
   --shadow-card: 0 1px 2px rgba(44, 44, 42, 0.04), 0 4px 16px rgba(44, 44, 42, 0.06);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171613;
+    --card: #221F1B;
+    --card-border: #3A362F;
+    --card-border-hover: #4A453C;
+
+    --teal-dark: #6BE6BE;
+    --teal-tint: #15332B;
+    --teal-tint-hover: #1E4A3E;
+    --teal-glow: rgba(29, 158, 117, 0.4);
+
+    --purple-tint: #27234A;
+
+    --coral: #FF9269;
+    --coral-bg: #3D2317;
+    --coral-bg-hover: #4F2C1D;
+    --coral-strong: #B8451F;
+    --coral-strong-hover: #D65530;
+
+    --success: #4FE3B0;
+    --success-bg: #15352C;
+
+    --warning: #F5B44E;
+    --warning-bg: #3B2C10;
+
+    --text-primary: #EDE9E1;
+    --text-secondary: #B6B1A5;
+    --text-muted: #8C8874;
+
+    --ring-track: #3A362F;
+
+    --overlay-scrim: rgba(0, 0, 0, 0.6);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #171613;
+  --card: #221F1B;
+  --card-border: #3A362F;
+  --card-border-hover: #4A453C;
+
+  --teal-dark: #6BE6BE;
+  --teal-tint: #15332B;
+  --teal-tint-hover: #1E4A3E;
+  --teal-glow: rgba(29, 158, 117, 0.4);
+
+  --purple-tint: #27234A;
+
+  --coral: #FF9269;
+  --coral-bg: #3D2317;
+  --coral-bg-hover: #4F2C1D;
+  --coral-strong: #B8451F;
+  --coral-strong-hover: #D65530;
+
+  --success: #4FE3B0;
+  --success-bg: #15352C;
+
+  --warning: #F5B44E;
+  --warning-bg: #3B2C10;
+
+  --text-primary: #EDE9E1;
+  --text-secondary: #B6B1A5;
+  --text-muted: #8C8874;
+
+  --ring-track: #3A362F;
+
+  --overlay-scrim: rgba(0, 0, 0, 0.6);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+html, body { transition: background-color 0.2s ease, color 0.2s ease; }
+.card { transition: background-color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
 
 * { box-sizing: border-box; }
 
@@ -87,6 +190,12 @@ button {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .avatar {
@@ -189,7 +298,7 @@ button {
 
 .level-badge {
   background: var(--purple);
-  color: #FFFFFF;
+  color: var(--text-on-accent);
   font-size: 13px;
   font-weight: 700;
   padding: 6px 14px;
@@ -297,12 +406,12 @@ button {
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.chip:hover { border-color: #D8D3C4; }
+.chip:hover { border-color: var(--card-border-hover); }
 
 .chip.active {
   background: var(--teal);
   border-color: var(--teal);
-  color: #FFFFFF;
+  color: var(--text-on-accent);
 }
 
 .chip.chip-add {
@@ -369,7 +478,7 @@ button {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #FFFFFF;
+  color: var(--text-on-accent);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .trade-checkbox svg { width: 12px; height: 12px; }
@@ -502,7 +611,7 @@ button {
 .cta-button {
   width: 100%;
   background: var(--teal);
-  color: #FFFFFF;
+  color: var(--text-on-accent);
   border: none;
   border-radius: var(--radius);
   padding: 15px 18px;
@@ -513,7 +622,7 @@ button {
   justify-content: center;
   gap: 8px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(29, 158, 117, 0.28);
+  box-shadow: 0 4px 14px var(--teal-glow);
   transition: background 0.15s ease, transform 0.15s ease;
 }
 
@@ -544,7 +653,7 @@ button {
   transition: background 0.15s ease;
 }
 .icon-button svg { width: 18px; height: 18px; }
-.icon-button:hover { background: #D8EDE3; }
+.icon-button:hover { background: var(--teal-tint-hover); }
 
 .topbar-title {
   flex: 1;
@@ -665,8 +774,8 @@ button {
   height: 32px;
   border-radius: 50%;
   border: none;
-  background: rgba(44, 44, 42, 0.65);
-  color: #FFFFFF;
+  background: var(--photo-scrim);
+  color: var(--text-on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -731,7 +840,7 @@ button {
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
-.secondary-button:hover { border-color: #D8D3C4; }
+.secondary-button:hover { border-color: var(--card-border-hover); }
 
 /* ---------- Loading state ---------- */
 .loading-state {
@@ -870,11 +979,11 @@ button {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #FFFFFF;
+  color: var(--text-on-accent);
   margin-top: 1px;
 }
-.rule-tile.pass .rule-tile-icon { background: var(--success); }
-.rule-tile.fail .rule-tile-icon { background: var(--warning); }
+.rule-tile.pass .rule-tile-icon { background: var(--success-strong); }
+.rule-tile.fail .rule-tile-icon { background: var(--warning-strong); }
 .rule-tile-icon svg { width: 12px; height: 12px; }
 
 .rule-tile-text { font-size: 13px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
@@ -882,7 +991,7 @@ button {
 .xp-earned-badge {
   align-self: flex-start;
   background: var(--purple);
-  color: #FFFFFF;
+  color: var(--text-on-accent);
   font-size: 13px;
   font-weight: 700;
   padding: 6px 14px;
@@ -1028,7 +1137,7 @@ select.text-input {
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
-.segment-btn:hover { border-color: #D8D3C4; }
+.segment-btn:hover { border-color: var(--card-border-hover); }
 .segment-btn.active {
   border-color: var(--teal);
   background: var(--teal-tint);
@@ -1075,7 +1184,7 @@ select.text-input {
   transition: background 0.15s ease;
 }
 .rule-remove-btn svg { width: 14px; height: 14px; }
-.rule-remove-btn:hover { background: #F5DCD1; }
+.rule-remove-btn:hover { background: var(--coral-bg-hover); }
 
 .add-rule-btn {
   width: 100%;
@@ -1181,15 +1290,15 @@ select.text-input {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #FFFFFF;
-  box-shadow: 0 1px 2px rgba(44, 44, 42, 0.25);
+  background: var(--knob-color);
+  box-shadow: var(--knob-shadow);
   transition: left 0.15s ease;
 }
 .toggle-switch.on .toggle-knob { left: 21px; }
 
 /* ---------- Danger / delete affordances ---------- */
 .icon-button-danger { background: var(--coral-bg); color: var(--coral); }
-.icon-button-danger:hover { background: #F5DCD1; }
+.icon-button-danger:hover { background: var(--coral-bg-hover); }
 
 .danger-link {
   display: block;
@@ -1207,8 +1316,8 @@ select.text-input {
 
 .danger-button {
   width: 100%;
-  background: var(--coral);
-  color: #FFFFFF;
+  background: var(--coral-strong);
+  color: var(--text-on-accent);
   border: none;
   border-radius: var(--radius);
   padding: 14px 18px;
@@ -1217,7 +1326,7 @@ select.text-input {
   cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease;
 }
-.danger-button:hover { background: #7D3116; }
+.danger-button:hover { background: var(--coral-strong-hover); }
 .danger-button:active { transform: scale(0.98); }
 .danger-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -1225,7 +1334,7 @@ select.text-input {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(44, 44, 42, 0.45);
+  background: var(--overlay-scrim);
   display: flex;
   align-items: flex-end;
   justify-content: center;

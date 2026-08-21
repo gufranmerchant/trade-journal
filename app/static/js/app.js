@@ -34,6 +34,69 @@
   const iconEdit = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
   const iconGear = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
   const iconEye = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const iconSun = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
+  const iconMoon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>`;
+
+  // ---------------------------------------------------------------------
+  // Theme (light/dark) — an explicit choice (data-theme attribute) always
+  // wins; with none set, style.css's own prefers-color-scheme media query
+  // decides, so the app just follows the OS live. index.html carries a
+  // small inline script that applies any stored choice before first paint
+  // (this file loads too late for that — avoids a flash of the wrong
+  // theme), this is the version that also wires the toggle button and
+  // keeps it in sync if the OS theme changes mid-session.
+  // ---------------------------------------------------------------------
+  const THEME_KEY = "mirror_theme";
+  const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function systemTheme() {
+    return darkMediaQuery.matches ? "dark" : "light";
+  }
+
+  function activeTheme() {
+    return document.documentElement.getAttribute("data-theme") || systemTheme();
+  }
+
+  function updateThemeToggleUI(theme) {
+    el("themeToggleBtn").innerHTML = theme === "dark" ? iconMoon : iconSun;
+    el("themeToggleBtn").setAttribute(
+      "aria-label",
+      theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+    );
+    el("themeColorMeta").setAttribute("content", theme === "dark" ? "#171613" : "#1D9E75");
+  }
+
+  // explicitTheme is the user's stored choice ("light"/"dark"), or null to
+  // follow the OS preference — null means "no data-theme attribute", which
+  // is exactly what lets style.css's media query take over.
+  function applyTheme(explicitTheme) {
+    if (explicitTheme) {
+      document.documentElement.setAttribute("data-theme", explicitTheme);
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    updateThemeToggleUI(explicitTheme || systemTheme());
+  }
+
+  function toggleTheme() {
+    const next = activeTheme() === "dark" ? "light" : "dark";
+    window.localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  }
+
+  function wireTheme() {
+    const stored = window.localStorage.getItem(THEME_KEY);
+    applyTheme(stored === "light" || stored === "dark" ? stored : null);
+
+    el("themeToggleBtn").addEventListener("click", toggleTheme);
+
+    darkMediaQuery.addEventListener("change", () => {
+      const current = window.localStorage.getItem(THEME_KEY);
+      if (current !== "light" && current !== "dark") {
+        updateThemeToggleUI(systemTheme());
+      }
+    });
+  }
 
   // ---- Log-trade screen state ----
   let strategiesCache = [];
@@ -1653,6 +1716,7 @@
   }
 
   async function init() {
+    wireTheme();
     el("logTradeBtn").addEventListener("click", openLogScreen);
     el("viewStrategyRulesLink").addEventListener("click", () => {
       const strategyId = Number(el("viewStrategyRulesLink").dataset.strategyId);

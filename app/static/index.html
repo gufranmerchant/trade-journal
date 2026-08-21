@@ -2,9 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script>
+    // Applied before the stylesheet loads so a dark-mode visitor never sees
+    // a flash of the light theme. Mirrors the resolution logic in app.js:
+    // an explicit stored choice wins; otherwise CSS's own prefers-color-
+    // scheme media query is the default, so no attribute is set at all.
+    (function () {
+      try {
+        var stored = localStorage.getItem("mirror_theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Mirror</title>
-  <meta name="theme-color" content="#1D9E75">
+  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon.svg">
@@ -17,11 +31,14 @@
         <span class="brand-dot"></span>
         <span class="brand-name">Mirror</span>
       </div>
-      <div class="avatar" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21a8 8 0 0 0-16 0"></path>
-          <circle cx="12" cy="7" r="4"></circle>
-        </svg>
+      <div class="topbar-actions">
+        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
+        <div class="avatar" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21a8 8 0 0 0-16 0"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        </div>
       </div>
     </header>
 
