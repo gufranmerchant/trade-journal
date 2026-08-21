@@ -427,6 +427,39 @@ def delete_trade(trade_id: int, user_id: int):
     return Response(status_code=204)
 
 
+class TradeBulkDelete(BaseModel):
+    user_id: int
+    trade_ids: list[int]
+
+
+@app.delete("/trades")
+def bulk_delete_trades(payload: TradeBulkDelete):
+    """Multi-select delete from the dashboard's trade list — same hard-delete
+    and XP-decrement rule as DELETE /trades/{id}, just batched into one
+    commit so selecting a dozen trades doesn't mean a dozen round-trips.
+    Silently ignores ids that don't exist or belong to another user rather
+    than 404ing, since the selection was built from this user's own list."""
+    with Session(engine) as s:
+        trades = s.scalars(
+            select(Trade).where(
+                Trade.user_id == payload.user_id,
+                Trade.id.in_(payload.trade_ids),
+            )
+        ).all()
+
+        total_xp = sum(t.xp_earned or 0 for t in trades)
+        if total_xp:
+            user = s.get(User, payload.user_id)
+            if user:
+                user.xp = max(0, user.xp - total_xp)
+
+        for t in trades:
+            s.delete(t)
+        s.commit()
+
+    return Response(status_code=204)
+
+
 @app.get("/users/{user_id}/dashboard")
 def get_dashboard(user_id: int):
     with Session(engine) as s:

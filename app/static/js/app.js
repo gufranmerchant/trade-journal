@@ -53,6 +53,15 @@
   // ---- Trade-detail screen state ----
   let currentDetailTradeId = null;
 
+  // ---- Trade list select/bulk-delete state ----
+  let selectModeActive = false;
+  let selectedTradeIds = new Set();
+  // Last args renderTradeList was called with (from the active filter chip) —
+  // cached so toggling a checkbox can re-render just the list without
+  // refetching or re-running the filter.
+  let lastRenderedTrades = [];
+  let lastStrategyById = new Map();
+
   function escapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str)
@@ -295,10 +304,14 @@
       const { cls, svg } = tradeIcon(trade);
       const strategyName = trade.strategy_id ? strategyById.get(trade.strategy_id) : null;
       const hasUsd = trade.pnl_usd !== null && trade.pnl_usd !== undefined;
+      const isSelected = selectedTradeIds.has(trade.id);
 
       const row = document.createElement("div");
-      row.className = "trade-row card";
+      row.className = "trade-row card" + (isSelected ? " selected" : "");
       row.innerHTML = `
+        ${selectModeActive
+          ? `<div class="trade-checkbox${isSelected ? " checked" : ""}" role="checkbox" aria-checked="${isSelected}">${isSelected ? iconCheck : ""}</div>`
+          : ""}
         <div class="trade-icon ${cls}">${svg}</div>
         <div class="trade-main">
           <div class="trade-title">${trade.instrument || "Unknown"} <span class="dir">${trade.direction || ""}</span></div>
@@ -309,9 +322,97 @@
           ${hasUsd ? `<span class="trade-r-usd">${fmtUsd(trade.pnl_usd)}</span>` : ""}
         </div>
       `;
-      row.addEventListener("click", () => openTradeDetail(trade.id));
+      row.addEventListener("click", () => {
+        if (selectModeActive) {
+          toggleTradeSelection(trade.id);
+        } else {
+          openTradeDetail(trade.id);
+        }
+      });
       container.appendChild(row);
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // Trade list select mode / bulk delete
+  // ---------------------------------------------------------------------
+
+  function rerenderTradeList() {
+    renderTradeList(lastRenderedTrades, lastStrategyById);
+  }
+
+  function updateSelectModeUI() {
+    el("selectModeBtn").textContent = selectModeActive ? "Cancel" : "Select";
+
+    const count = selectedTradeIds.size;
+    const countLabel = el("selectedCountLabel");
+    countLabel.textContent = `${count} selected`;
+    countLabel.classList.toggle("hidden", !selectModeActive || count === 0);
+
+    const showBulkDelete = selectModeActive && count > 0;
+    const bulkBtn = el("bulkDeleteBtn");
+    bulkBtn.textContent = `Delete (${count})`;
+    bulkBtn.classList.toggle("hidden", !showBulkDelete);
+    el("logTradeBtn").classList.toggle("hidden", selectModeActive);
+    // Hide the whole floating CTA bar only while select mode has nothing
+    // selected yet — otherwise it'd be an empty gradient strip floating
+    // over the list with nothing to tap.
+    el("homeCta").classList.toggle("hidden", selectModeActive && !showBulkDelete);
+  }
+
+  function setSelectMode(active) {
+    selectModeActive = active;
+    if (!active) selectedTradeIds.clear();
+    updateSelectModeUI();
+    rerenderTradeList();
+  }
+
+  function toggleTradeSelection(tradeId) {
+    if (selectedTradeIds.has(tradeId)) {
+      selectedTradeIds.delete(tradeId);
+    } else {
+      selectedTradeIds.add(tradeId);
+    }
+    updateSelectModeUI();
+    rerenderTradeList();
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedTradeIds);
+    if (ids.length === 0) return;
+
+    openConfirmModal({
+      title: `Delete ${ids.length} trade${ids.length === 1 ? "" : "s"}?`,
+      message: "This can't be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        const res = await fetch(`/trades?user_id=${USER_ID}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: USER_ID, trade_ids: ids }),
+        });
+        if (!res.ok) {
+          let message = `Request failed (${res.status})`;
+          try {
+            const body = await res.json();
+            if (body && body.detail) message = body.detail;
+          } catch (_) {
+            // response body wasn't JSON — fall back to the generic message
+          }
+          throw new Error(message);
+        }
+
+        selectModeActive = false;
+        selectedTradeIds.clear();
+        updateSelectModeUI();
+        await loadDashboard();
+      },
+    });
+  }
+
+  function wireSelectMode() {
+    el("selectModeBtn").addEventListener("click", () => setSelectMode(!selectModeActive));
+    el("bulkDeleteBtn").addEventListener("click", handleBulkDelete);
   }
 
   function renderLoadError() {
@@ -344,6 +445,8 @@
     const strategyById = new Map(strategies.map((s) => [s.id, s.name]));
     buildFilters(strategies, trades, (filtered, filterLabel) => {
       renderStats(filtered, filterLabel);
+      lastRenderedTrades = filtered;
+      lastStrategyById = strategyById;
       renderTradeList(filtered, strategyById);
     });
     return true;
@@ -1332,6 +1435,7 @@
     wireStrategyScreen();
     wireManageScreen();
     wireConfirmModal();
+    wireSelectMode();
     await loadDashboard();
   }
 

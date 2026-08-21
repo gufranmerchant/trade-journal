@@ -297,6 +297,32 @@ button {
   font-weight: 700;
 }
 
+/* ---------- Trade list toolbar (select mode) ---------- */
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.list-toolbar-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+
+.select-toggle-btn {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal-dark);
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.select-toggle-btn:hover { text-decoration: underline; }
+
 /* ---------- Trade list ---------- */
 .trade-list {
   display: flex;
@@ -315,6 +341,28 @@ button {
 
 .trade-row:active {
   transform: scale(0.99);
+}
+
+.trade-row.selected {
+  box-shadow: var(--shadow-card), inset 0 0 0 2px var(--teal);
+}
+
+.trade-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #FFFFFF;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.trade-checkbox svg { width: 12px; height: 12px; }
+.trade-checkbox.checked {
+  background: var(--teal);
+  border-color: var(--teal);
 }
 
 .trade-icon {
