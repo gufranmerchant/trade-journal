@@ -21,6 +21,12 @@ a filterable trade list, and the rolling discipline score + rule-adherence
 streak the dashboard renders. DELETE /trades/{id} hard-deletes a trade —
 nothing else references a trade by id, so there's no soft-delete concern.
 
+POST /trades/{id}/adopt-strategy retroactively links an off-plan trade to a
+strategy just discovered from it (see setup_suggestion above) without
+re-judging it or touching XP — it stays permanently marked off_plan_origin
+so the frontend can show it as the trade a strategy was discovered from,
+not a disciplined execution of that strategy.
+
 POST/GET/PATCH /strategies manage the rulebooks trades get checked against.
 Rule ids are stable across edits — see _apply_rule_updates — because
 Trade.rule_results and any future per-rule stats are keyed on them.
@@ -224,6 +230,7 @@ def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
         "session": trade.session,
         "context_note": trade.context_note,
         "is_off_plan": trade.is_off_plan,
+        "off_plan_origin": trade.off_plan_origin,
         "rule_results": trade.rule_results,
         "rules_passed": trade.rules_passed,
         "rules_total": trade.rules_total,
@@ -324,6 +331,42 @@ async def log_trade(
         }
 
 
+class TradeAdoptStrategy(BaseModel):
+    user_id: int
+    strategy_id: int
+
+
+@app.post("/trades/{trade_id}/adopt-strategy")
+def adopt_strategy_for_trade(trade_id: int, payload: TradeAdoptStrategy):
+    """Retroactively links an off-plan trade to a strategy just discovered
+    from it — the "Save as strategy" action on the off-plan smart-suggestion
+    card. Only strategy_id/is_off_plan/off_plan_origin change: rule_results,
+    rules_passed/total, xp_earned and the user's xp total are left exactly
+    as they were, so the discipline score (which treats rules_total == 0 as
+    0% compliance regardless of is_off_plan) is unaffected. This trade had
+    no plan when it was taken, so it's never rule-checked or scored — only
+    future trades logged against the new strategy earn XP normally.
+    """
+    with Session(engine) as s:
+        trade = s.get(Trade, trade_id)
+        if trade is None or trade.user_id != payload.user_id:
+            raise HTTPException(404, "Trade not found for this user")
+        if not trade.is_off_plan:
+            raise HTTPException(400, "Trade is not off-plan")
+
+        strategy = s.get(Strategy, payload.strategy_id)
+        if strategy is None or strategy.user_id != payload.user_id:
+            raise HTTPException(404, "Strategy not found for this user")
+
+        trade.strategy_id = strategy.id
+        trade.is_off_plan = False
+        trade.off_plan_origin = True
+
+        s.commit()
+        s.refresh(trade)
+        return _trade_detail_out(trade, strategy.name)
+
+
 @app.get("/trades")
 def list_trades(
     user_id: int,
@@ -349,6 +392,7 @@ def list_trades(
                 "r_multiple": t.r_multiple,
                 "pnl_usd": t.pnl_usd,
                 "is_off_plan": t.is_off_plan,
+                "off_plan_origin": t.off_plan_origin,
                 "rules_passed": t.rules_passed,
                 "rules_total": t.rules_total,
                 "xp_earned": t.xp_earned,

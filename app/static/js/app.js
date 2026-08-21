@@ -42,6 +42,7 @@
   let dashboardDirty = false;
   let lastLoggedTradeId = null;
   let lastOffPlanSuggestion = null; // {name, rules} from the most recent off-plan result, or null
+  let suggestionSourceTradeId = null; // trade id to retroactively link once the suggested strategy saves, or null
 
   // ---- Strategy screen state ----
   let editingStrategyId = null;
@@ -264,6 +265,9 @@
   function tradeIcon(trade) {
     if (trade.is_off_plan) return { cls: "offplan", svg: iconFlagOff };
     const won = Number(trade.r_multiple) > 0;
+    if (trade.off_plan_origin) {
+      return { cls: "neutral", svg: won ? iconArrowUp : iconArrowDown };
+    }
     return {
       cls: trade.rules_passed === trade.rules_total ? "success" : "warning",
       svg: won ? iconArrowUp : iconArrowDown,
@@ -275,9 +279,12 @@
     if (trade.is_off_plan) {
       return `<span class="rules-offplan">Off-plan</span> · ${date}`;
     }
+    const setup = strategyName ? `${strategyName} · ` : "";
+    if (trade.off_plan_origin) {
+      return `${setup}${date} · <span class="rules-origin-tag">Previously off-plan</span>`;
+    }
     const ok = trade.rules_passed === trade.rules_total;
     const ruleCls = ok ? "rules-ok" : "rules-bad";
-    const setup = strategyName ? `${strategyName} · ` : "";
     return `${setup}${date} · <span class="${ruleCls}">${trade.rules_passed}/${trade.rules_total} rules</span>`;
   }
 
@@ -643,6 +650,7 @@
     const xpBadge = el(ids.xpBadge);
     const coachCard = el(ids.coachCard);
     const didWellCard = el(ids.didWellCard);
+    const originTag = el(ids.offplanOriginTag);
 
     if (trade.is_off_plan) {
       offplanBanner.classList.remove("hidden");
@@ -653,8 +661,21 @@
       xpBadge.classList.add("hidden");
       coachCard.classList.add("hidden");
       didWellCard.classList.add("hidden");
+      if (originTag) originTag.classList.add("hidden");
+    } else if (trade.off_plan_origin) {
+      // The trade a strategy was retroactively discovered from — never
+      // rule-checked and never will be, so show the tag in place of a
+      // checklist rather than a misleading "0/0 rules" or "+0 XP".
+      offplanBanner.classList.add("hidden");
+      ruleList.classList.add("hidden");
+      ruleList.innerHTML = "";
+      xpBadge.classList.add("hidden");
+      coachCard.classList.add("hidden");
+      didWellCard.classList.add("hidden");
+      if (originTag) originTag.classList.remove("hidden");
     } else {
       offplanBanner.classList.add("hidden");
+      if (originTag) originTag.classList.add("hidden");
 
       const results = trade.rule_results || [];
       ruleList.innerHTML = results
@@ -691,6 +712,7 @@
       sl: "resultFactSl", tp: "resultFactTp", rr: "resultFactRR",
     },
     offplanBanner: "offplanBanner", offplanText: "offplanBannerText",
+    offplanOriginTag: "resultOffplanOriginTag",
     ruleList: "ruleList", xpBadge: "xpEarnedBadge",
     coachCard: "coachNoteCard", coachText: "coachNoteText",
     didWellCard: "didWellCard", didWellText: "didWellText",
@@ -818,6 +840,11 @@
       if (!lastOffPlanSuggestion) return;
       strategyReturnView = "log";
       openNewStrategyScreenFromSuggestion(lastOffPlanSuggestion.name, lastOffPlanSuggestion.rules);
+      // openNewStrategyScreenFromSuggestion resets the strategy form first
+      // (which clears this), so set it after — it's what tells
+      // handleSaveStrategy to retroactively link this trade once the
+      // suggested strategy saves.
+      suggestionSourceTradeId = lastLoggedTradeId;
     });
 
     el("logBackBtn").addEventListener("click", async () => {
@@ -844,6 +871,7 @@
     icon: "detailIcon", title: "detailTitle", sub: "detailSub",
     r: "detailR", usd: "detailUsd",
     offplanBanner: "detailOffplanBanner", offplanText: "detailOffplanText",
+    offplanOriginTag: "detailOffplanOriginTag",
     ruleList: "detailRuleList", xpBadge: "detailXpBadge",
     coachCard: "detailCoachCard", coachText: "detailCoachText",
     didWellCard: "detailDidWellCard", didWellText: "detailDidWellText",
@@ -1066,6 +1094,7 @@
 
   function resetStrategyForm() {
     editingStrategyId = null;
+    suggestionSourceTradeId = null;
     el("strategyTopbarTitle").textContent = "New Strategy";
     el("saveStrategyBtn").textContent = "Save strategy";
     el("strategyName").value = "";
@@ -1108,6 +1137,7 @@
     if (!strategy) return;
 
     editingStrategyId = strategyId;
+    suggestionSourceTradeId = null;
     el("strategyTopbarTitle").textContent = "Edit Strategy";
     el("saveStrategyBtn").textContent = "Save changes";
     el("strategyName").value = strategy.name || "";
@@ -1205,7 +1235,34 @@
         }
         throw new Error(message);
       }
-      await res.json();
+      const savedStrategy = await res.json();
+
+      // Saving a strategy drafted from an off-plan suggestion retroactively
+      // links the trade it was discovered from — no extra confirmation, no
+      // re-judging, no XP (see POST /trades/{id}/adopt-strategy in main.py).
+      // Best-effort: the strategy is already saved either way, so a failure
+      // here shouldn't block returning to the log screen.
+      if (editingStrategyId === null && suggestionSourceTradeId !== null) {
+        const tradeIdToLink = suggestionSourceTradeId;
+        suggestionSourceTradeId = null;
+        try {
+          const linkRes = await fetch(`/trades/${tradeIdToLink}/adopt-strategy`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: USER_ID, strategy_id: savedStrategy.id }),
+          });
+          if (linkRes.ok) {
+            const linkedTrade = await linkRes.json();
+            dashboardDirty = true;
+            if (lastLoggedTradeId === tradeIdToLink) {
+              renderResult(linkedTrade, linkedTrade.strategy_name);
+            }
+          }
+        } catch (_) {
+          // non-fatal — see comment above
+        }
+      }
+
       await returnFromStrategyEdit();
     } catch (err) {
       showStrategyError(err.message || "Couldn't save this strategy — try again.");

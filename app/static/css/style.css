@@ -379,6 +379,7 @@ button {
 .trade-icon.success { background: var(--success-bg); color: var(--success); }
 .trade-icon.warning { background: var(--warning-bg); color: var(--warning); }
 .trade-icon.offplan { background: var(--coral-bg); color: var(--coral); }
+.trade-icon.neutral { background: var(--bg); color: var(--text-muted); }
 
 .trade-main {
   flex: 1;
@@ -417,6 +418,7 @@ button {
 .trade-sub .rules-ok { color: var(--success); font-weight: 700; }
 .trade-sub .rules-bad { color: var(--warning); font-weight: 700; }
 .trade-sub .rules-offplan { color: var(--coral); font-weight: 700; }
+.trade-sub .rules-origin-tag { color: var(--text-muted); font-weight: 700; }
 
 .trade-r {
   display: flex;
@@ -872,6 +874,17 @@ button {
   font-weight: 700;
   padding: 6px 14px;
   border-radius: 999px;
+}
+
+.offplan-origin-tag {
+  align-self: flex-start;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
 }
 
 .coach-note { padding: 14px 16px; }

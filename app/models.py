@@ -97,6 +97,14 @@ class Trade(Base):
 
     # The verdict (produced by the AI rule-check pass)
     is_off_plan = Column(Boolean, default=False)
+    # True only for a trade that was off-plan when taken and later got
+    # retroactively linked to a strategy discovered from it (the off-plan
+    # "Save as strategy" flow). Distinct from is_off_plan, which this flips
+    # to False once linked — off_plan_origin is the permanent record that no
+    # plan existed *at the time*, so it's never rule-checked and never earns
+    # XP even after linking; the frontend renders it as a plain "Previously
+    # off-plan" tag instead of a rule checklist.
+    off_plan_origin = Column(Boolean, default=False)
     rule_results = Column(JSON, default=list)        # [{rule_id, text, passed}]
     rules_passed = Column(Integer, default=0)
     rules_total = Column(Integer, default=0)
