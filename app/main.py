@@ -34,6 +34,11 @@ Strategies are soft-deleted only (PATCH .../is_active=false) — a trade's
 rule_results reference the strategy's rules, so removing a strategy must
 never break the history of trades already checked against it.
 
+GET /strategies also lazily seeds one is_example=True demo strategy the
+first time a user has zero strategy rows at all (_seed_example_strategy_if_
+needed) — the app has no preset strategies otherwise, so this one is always
+clearly tagged and removed the same soft-delete way as any other.
+
 POST /users creates the user row everything else hangs off of (email must
 be unique) — there's no auth yet, so this is just enough to seed data.
 """
@@ -59,7 +64,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 engine = create_engine("sqlite:///journal.db")
 Base.metadata.create_all(engine)
-app = FastAPI(title="Trade Discipline Journal")
+app = FastAPI(title="Mirror")
 
 # Plain HTML/CSS/JS frontend, no build step — served as static files so it
 # can become a PWA later without changing how it's hosted. Mounted under
@@ -166,8 +171,46 @@ def _strategy_out(strategy: Strategy) -> dict:
         "direction_bias": strategy.direction_bias,
         "rules": strategy.rules,
         "is_active": strategy.is_active,
+        "is_example": strategy.is_example,
         "created_at": strategy.created_at,
     }
+
+
+def _seed_example_strategy_if_needed(s: Session, user_id: int) -> None:
+    """First-run scaffolding: a brand-new user's strategy pickers/Manage
+    screen would otherwise be an intimidating blank slate with no sense of
+    what a strategy even looks like. The first time GET /strategies is
+    called for a user with zero strategy rows of their own (active or
+    inactive — including a deactivated example), seed exactly one
+    is_example=True strategy. Once any strategy row exists for the user this
+    is permanently a no-op, so deleting the example never resurrects it and
+    a user who already had strategies before this feature shipped is left
+    alone. is_example is never set anywhere else — it marks this one demo
+    row and nothing the user creates themselves.
+    """
+    if s.get(User, user_id) is None:
+        return
+    has_any = s.scalar(select(Strategy.id).where(Strategy.user_id == user_id).limit(1))
+    if has_any is not None:
+        return
+
+    s.add(Strategy(
+        user_id=user_id,
+        name="Trendline Break Retest (Example)",
+        description="An example so you can see what a strategy looks like — "
+                     "not one of your own until you make it one. Edit it or "
+                     "delete it and add your real setups.",
+        direction_bias="both",
+        rules=[
+            {"id": 1, "text": "Identify a clear trendline connecting at least two swing highs or lows"},
+            {"id": 2, "text": "Wait for a decisive candle close through the trendline to confirm the break"},
+            {"id": 3, "text": "Wait for price to pull back and retest the broken trendline"},
+            {"id": 4, "text": "Enter only after a confirmation candle closes in your favor at the retest"},
+            {"id": 5, "text": "Place stop-loss beyond the retest point, sized to your own risk rule"},
+        ],
+        is_example=True,
+    ))
+    s.commit()
 
 
 @app.post("/users")
@@ -558,6 +601,8 @@ def create_strategy(payload: StrategyCreate):
 @app.get("/strategies")
 def list_strategies(user_id: int, is_active: bool | None = None):
     with Session(engine) as s:
+        _seed_example_strategy_if_needed(s, user_id)
+
         query = select(Strategy).where(Strategy.user_id == user_id)
         if is_active is not None:
             query = query.where(Strategy.is_active == is_active)

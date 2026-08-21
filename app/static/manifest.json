@@ -1,6 +1,6 @@
 {
-  "name": "Trade Discipline Journal",
-  "short_name": "Journal",
+  "name": "Mirror",
+  "short_name": "Mirror",
   "description": "A discipline coach for prop/funded-challenge traders.",
   "start_url": "/",
   "scope": "/",

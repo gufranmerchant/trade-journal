@@ -56,6 +56,12 @@ class Strategy(Base):
     rules = Column(JSON, nullable=False, default=list)  # list[{id, text}]
     direction_bias = Column(String)                 # "long" | "short" | "both"
     is_active = Column(Boolean, default=True)
+    # True only for the one demo strategy auto-seeded for a brand-new user
+    # with zero strategies of their own (see _seed_example_strategy_if_needed
+    # in main.py) — never set by anything the user creates. Exists purely so
+    # the frontend can badge it "Example" and never let it pass as something
+    # the user authored, per this app's no-presets philosophy.
+    is_example = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="strategies")

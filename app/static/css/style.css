@@ -261,6 +261,19 @@ button {
   color: var(--text-primary);
 }
 
+.stat-link {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal-dark);
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 2px;
+  cursor: pointer;
+}
+.stat-link:hover { text-decoration: underline; }
+
 /* ---------- Filter chips ---------- */
 .filters {
   display: flex;
@@ -1255,6 +1268,70 @@ select.text-input {
 @media (min-width: 480px) {
   .modal-overlay { align-items: center; }
 }
+
+/* ---------- Example-strategy badge ---------- */
+.example-badge {
+  display: inline-block;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.example-badge-inline {
+  display: inline-block;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ---------- Read-only strategy-detail screen ---------- */
+.strategy-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.strategy-detail-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.strategy-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.direction-badge {
+  display: inline-block;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+}
+
+.rule-tile.neutral { background: var(--bg); }
+
+.manage-row-main { cursor: pointer; }
 
 /* ---------- Responsive polish ---------- */
 @media (min-width: 480px) {

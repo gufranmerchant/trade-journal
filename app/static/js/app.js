@@ -33,6 +33,7 @@
   const iconCross = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
   const iconEdit = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
   const iconGear = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  const iconEye = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>`;
 
   // ---- Log-trade screen state ----
   let strategiesCache = [];
@@ -47,6 +48,10 @@
   // ---- Strategy screen state ----
   let editingStrategyId = null;
   let strategyReturnView = "home"; // "home" | "log" | "manage"
+
+  // ---- Read-only strategy-detail screen state ----
+  let strategyDetailStrategyId = null;
+  let strategyDetailReturnView = "manage"; // "home" | "log" | "manage" — where its back button (and Edit, once saved) goes
 
   // ---- Manage-strategies screen state ----
   let manageStrategiesCache = [];
@@ -175,13 +180,24 @@
   // Both cards describe exactly the trades currently visible below — whatever
   // the active filter chip scopes them to. The discipline ring is the one
   // global, unfiltered number on this page; these two react to filters.
-  function renderStats(trades, filterLabel) {
+  function renderStats(trades, filterLabel, strategyId) {
     const passed = trades.reduce((sum, t) => sum + (t.rules_passed || 0), 0);
     const total = trades.reduce((sum, t) => sum + (t.rules_total || 0), 0);
     el("rulesFollowed").textContent = `${passed}/${total}`;
 
     el("netPnlLabel").textContent =
       filterLabel === "All" ? "Net P&L" : `Net P&L · ${filterLabel}`;
+
+    // Only a single-strategy filter chip has a strategy to view rules for —
+    // "All" and the direction chips carry strategyId: null.
+    const viewRulesLink = el("viewStrategyRulesLink");
+    if (strategyId !== null && strategyId !== undefined) {
+      viewRulesLink.dataset.strategyId = String(strategyId);
+      viewRulesLink.classList.remove("hidden");
+    } else {
+      delete viewRulesLink.dataset.strategyId;
+      viewRulesLink.classList.add("hidden");
+    }
 
     // R is always shown — it's the discipline unit and every trade has one.
     // Dollars are supplementary: summed from whichever trades have a
@@ -217,28 +233,34 @@
     container.appendChild(manageBtn);
 
     const chips = [
-      { key: "all", label: "All", test: () => true },
+      { key: "all", label: "All", strategyId: null, test: () => true },
       ...strategies.map((s) => ({
         key: `strategy:${s.id}`,
         label: s.name,
+        strategyId: s.id,
+        isExample: !!s.is_example,
         test: (t) => t.strategy_id === s.id,
       })),
-      { key: "direction:short", label: "Shorts", test: (t) => t.direction === "short" },
-      { key: "direction:long", label: "Longs", test: (t) => t.direction === "long" },
+      { key: "direction:short", label: "Shorts", strategyId: null, test: (t) => t.direction === "short" },
+      { key: "direction:long", label: "Longs", strategyId: null, test: (t) => t.direction === "long" },
     ];
 
     let active = "all";
 
     function apply() {
       const chip = chips.find((c) => c.key === active) || chips[0];
-      onChange(trades.filter(chip.test), chip.label);
+      onChange(trades.filter(chip.test), chip.label, chip.strategyId);
     }
 
     chips.forEach((chip) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "chip" + (chip.key === active ? " active" : "");
-      btn.textContent = chip.label;
+      if (chip.isExample) {
+        btn.innerHTML = `${escapeHtml(chip.label)} <span class="example-badge-inline">Example</span>`;
+      } else {
+        btn.textContent = chip.label;
+      }
       btn.addEventListener("click", () => {
         active = chip.key;
         container.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
@@ -450,8 +472,8 @@
     renderHero(dashboard);
 
     const strategyById = new Map(strategies.map((s) => [s.id, s.name]));
-    buildFilters(strategies, trades, (filtered, filterLabel) => {
-      renderStats(filtered, filterLabel);
+    buildFilters(strategies, trades, (filtered, filterLabel, strategyId) => {
+      renderStats(filtered, filterLabel, strategyId);
       lastRenderedTrades = filtered;
       lastStrategyById = strategyById;
       renderTradeList(filtered, strategyById);
@@ -469,11 +491,13 @@
     el("detailView").classList.toggle("hidden", view !== "detail");
     el("strategyView").classList.toggle("hidden", view !== "strategy");
     el("manageView").classList.toggle("hidden", view !== "manage");
+    el("strategyDetailView").classList.toggle("hidden", view !== "strategyDetail");
     el("homeTopbar").classList.toggle("hidden", view !== "home");
     el("logTopbar").classList.toggle("hidden", view !== "log");
     el("detailTopbar").classList.toggle("hidden", view !== "detail");
     el("strategyTopbar").classList.toggle("hidden", view !== "strategy");
     el("manageTopbar").classList.toggle("hidden", view !== "manage");
+    el("strategyDetailTopbar").classList.toggle("hidden", view !== "strategyDetail");
     el("homeCta").classList.toggle("hidden", view !== "home");
     window.scrollTo(0, 0);
   }
@@ -551,10 +575,21 @@
       btn.className = "strategy-option";
       btn.dataset.value = String(s.id);
       const ruleCount = (s.rules || []).length;
+      const exampleBadge = s.is_example ? ` <span class="example-badge-inline">Example</span>` : "";
       btn.innerHTML = `
-        <span class="strategy-option-name">${escapeHtml(s.name)}</span>
+        <span class="strategy-option-name">${escapeHtml(s.name)}${exampleBadge}</span>
         <span class="strategy-option-hint">${ruleCount} rule${ruleCount === 1 ? "" : "s"}</span>
       `;
+
+      const viewBtn = document.createElement("button");
+      viewBtn.type = "button";
+      viewBtn.className = "strategy-edit-btn";
+      viewBtn.setAttribute("aria-label", `View ${s.name}`);
+      viewBtn.innerHTML = iconEye;
+      viewBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openStrategyDetailScreen(s.id, "log");
+      });
 
       const editBtn = document.createElement("button");
       editBtn.type = "button";
@@ -568,6 +603,7 @@
       });
 
       row.appendChild(btn);
+      row.appendChild(viewBtn);
       row.appendChild(editBtn);
       container.appendChild(row);
     });
@@ -1128,12 +1164,23 @@
     showView("strategy");
   }
 
+  // strategiesCache is active-only (used by the dashboard/log picker);
+  // manageStrategiesCache includes inactive ones — a strategy opened from
+  // the Manage screen may only exist in the latter.
+  function findStrategyById(strategyId) {
+    return strategiesCache.find((s) => s.id === strategyId)
+      || manageStrategiesCache.find((s) => s.id === strategyId)
+      || null;
+  }
+
+  function directionBiasLabel(bias) {
+    if (bias === "long") return "Long only";
+    if (bias === "short") return "Short only";
+    return "Both directions";
+  }
+
   function openEditStrategyScreen(strategyId) {
-    // strategiesCache is active-only (used by the dashboard/log picker);
-    // manageStrategiesCache includes inactive ones — a strategy opened for
-    // edit from the Manage screen may only exist in the latter.
-    const strategy = strategiesCache.find((s) => s.id === strategyId)
-      || manageStrategiesCache.find((s) => s.id === strategyId);
+    const strategy = findStrategyById(strategyId);
     if (!strategy) return;
 
     editingStrategyId = strategyId;
@@ -1153,6 +1200,118 @@
     hideStrategyError();
     el("deleteStrategyBtn").classList.remove("hidden");
     showView("strategy");
+  }
+
+  // ---------------------------------------------------------------------
+  // Read-only strategy-detail screen — "I just want to look at my rules"
+  // shouldn't require going through the edit form. Reachable from the log
+  // screen's strategy picker (the mid-logging "wait, what were my rules
+  // again?" moment) and from Manage Strategies. Renders straight from
+  // whichever cache already has the strategy (see findStrategyById) — no
+  // separate fetch needed since both entry points already loaded it.
+  // ---------------------------------------------------------------------
+
+  function hideStrategyDetailError() {
+    el("strategyDetailErrorBanner").classList.add("hidden");
+  }
+
+  function showStrategyDetailError(message) {
+    el("strategyDetailErrorText").textContent = message;
+    el("strategyDetailErrorBanner").classList.remove("hidden");
+  }
+
+  function renderStrategyDetail(strategy) {
+    el("strategyDetailTopbarTitle").textContent = strategy.name;
+    el("strategyDetailName").textContent = strategy.name;
+    el("strategyDetailDirection").textContent = directionBiasLabel(strategy.direction_bias);
+    el("strategyDetailExampleBadge").classList.toggle("hidden", !strategy.is_example);
+    el("strategyDetailExampleNote").classList.toggle("hidden", !strategy.is_example);
+    el("strategyDetailRemoveExampleBtn").classList.toggle("hidden", !strategy.is_example);
+
+    const rules = strategy.rules || [];
+    const rulesEl = el("strategyDetailRules");
+    rulesEl.innerHTML = rules.length
+      ? rules.map((r) => `
+        <div class="rule-tile neutral">
+          <div class="rule-tile-text">${escapeHtml(r.text)}</div>
+        </div>`).join("")
+      : `<p class="section-hint">No rules yet — edit this strategy to add some.</p>`;
+  }
+
+  function openStrategyDetailScreen(strategyId, returnView) {
+    const strategy = findStrategyById(strategyId);
+    if (!strategy) return;
+    strategyDetailStrategyId = strategyId;
+    strategyDetailReturnView = returnView;
+    hideStrategyDetailError();
+    renderStrategyDetail(strategy);
+    showView("strategyDetail");
+  }
+
+  // Deactivates like any other strategy removal (soft-delete, reversible
+  // from Manage Strategies) but skips the confirm dialog real strategies
+  // get — this one was never the user's committed work, so there's nothing
+  // to protect them from losing.
+  async function handleRemoveExampleStrategy() {
+    if (strategyDetailStrategyId === null) return;
+    hideStrategyDetailError();
+    const btn = el("strategyDetailRemoveExampleBtn");
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/strategies/${strategyDetailStrategyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: USER_ID, is_active: false }),
+      });
+      if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) message = body.detail;
+        } catch (_) {
+          // response body wasn't JSON — fall back to the generic message
+        }
+        throw new Error(message);
+      }
+      await res.json();
+      dashboardDirty = true;
+
+      if (strategyDetailReturnView === "log") {
+        const prevSelected = selectedStrategyValue;
+        await refreshStrategiesCache();
+        renderStrategyPicker();
+        if (prevSelected !== OFFPLAN_VALUE && strategiesCache.some((s) => String(s.id) === prevSelected)) {
+          selectStrategy(prevSelected);
+        }
+        showView("log");
+      } else if (strategyDetailReturnView === "manage") {
+        await refreshStrategiesCache();
+        await loadManageStrategies();
+        showView("manage");
+      } else {
+        await loadDashboard();
+        showView("home");
+      }
+    } catch (err) {
+      showStrategyDetailError(err.message || "Couldn't remove this — try again.");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function wireStrategyDetailScreen() {
+    el("strategyDetailBackBtn").addEventListener("click", () => {
+      showView(strategyDetailReturnView);
+    });
+
+    el("strategyDetailEditBtn").addEventListener("click", () => {
+      // Edit jumps straight past this screen — Save/Remove on the edit
+      // screen return to wherever the detail view itself would have gone.
+      strategyReturnView = strategyDetailReturnView;
+      openEditStrategyScreen(strategyDetailStrategyId);
+    });
+
+    el("strategyDetailRemoveExampleBtn").addEventListener("click", handleRemoveExampleStrategy);
   }
 
   async function refreshStrategiesCache() {
@@ -1384,11 +1543,12 @@
 
     manageStrategiesCache.forEach((s) => {
       const ruleCount = (s.rules || []).length;
+      const exampleBadge = s.is_example ? ` <span class="example-badge-inline">Example</span>` : "";
       const row = document.createElement("div");
       row.className = "manage-row card" + (s.is_active ? "" : " inactive");
       row.innerHTML = `
         <div class="manage-row-main">
-          <div class="manage-row-name">${escapeHtml(s.name)}</div>
+          <div class="manage-row-name">${escapeHtml(s.name)}${exampleBadge}</div>
           <div class="manage-row-hint">${ruleCount} rule${ruleCount === 1 ? "" : "s"}${s.is_active ? "" : " · Inactive"}</div>
         </div>
         <button type="button" class="strategy-edit-btn" aria-label="Edit ${escapeHtml(s.name)}">${iconEdit}</button>
@@ -1397,6 +1557,13 @@
           <span class="toggle-knob"></span>
         </button>
       `;
+
+      // Tapping the name/hint area opens the read-only view — "I just want
+      // to look" shouldn't require going through Edit. The pencil and
+      // toggle are separate sibling controls, so this never intercepts them.
+      row.querySelector(".manage-row-main").addEventListener("click", () => {
+        openStrategyDetailScreen(s.id, "manage");
+      });
 
       row.querySelector(".strategy-edit-btn").addEventListener("click", () => {
         strategyReturnView = "manage";
@@ -1487,9 +1654,15 @@
 
   async function init() {
     el("logTradeBtn").addEventListener("click", openLogScreen);
+    el("viewStrategyRulesLink").addEventListener("click", () => {
+      const strategyId = Number(el("viewStrategyRulesLink").dataset.strategyId);
+      if (!strategyId) return;
+      openStrategyDetailScreen(strategyId, "home");
+    });
     wireLogScreen();
     wireDetailScreen();
     wireStrategyScreen();
+    wireStrategyDetailScreen();
     wireManageScreen();
     wireConfirmModal();
     wireSelectMode();

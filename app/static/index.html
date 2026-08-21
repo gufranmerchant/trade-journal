@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Journal</title>
+  <title>Mirror</title>
   <meta name="theme-color" content="#1D9E75">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
@@ -15,7 +15,7 @@
     <header class="topbar" id="homeTopbar">
       <div class="brand">
         <span class="brand-dot"></span>
-        <span class="brand-name">Journal</span>
+        <span class="brand-name">Mirror</span>
       </div>
       <div class="avatar" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -77,6 +77,17 @@
       <span class="topbar-spacer" aria-hidden="true"></span>
     </header>
 
+    <header class="topbar hidden" id="strategyDetailTopbar">
+      <button class="icon-button" id="strategyDetailBackBtn" type="button" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </button>
+      <span class="topbar-title" id="strategyDetailTopbarTitle">Strategy</span>
+      <span class="topbar-spacer" aria-hidden="true"></span>
+    </header>
+
     <main class="content" id="homeView">
       <section class="hero card">
         <div class="ring-wrap">
@@ -112,6 +123,7 @@
         <div class="stat-card card">
           <div class="stat-label" id="netPnlLabel">Net P&amp;L</div>
           <div class="stat-value" id="netPnl">0R</div>
+          <button type="button" class="stat-link hidden" id="viewStrategyRulesLink">View rules →</button>
         </div>
       </section>
 
@@ -429,6 +441,32 @@
       </div>
 
       <section class="manage-list" id="manageStrategyList" aria-live="polite"></section>
+    </main>
+
+    <main class="content hidden" id="strategyDetailView">
+      <section class="detail-body" aria-live="polite">
+        <div class="strategy-detail-header">
+          <h2 class="strategy-detail-name" id="strategyDetailName"></h2>
+          <div class="strategy-detail-meta">
+            <span class="direction-badge" id="strategyDetailDirection"></span>
+            <span class="example-badge hidden" id="strategyDetailExampleBadge">Example</span>
+          </div>
+        </div>
+
+        <div class="coach-note card hidden" id="strategyDetailExampleNote">
+          <p>This is a demo so you can see what a strategy looks like — it isn't one of your own until you edit and keep it. Delete it anytime.</p>
+        </div>
+
+        <div class="section-label">Rules</div>
+        <div class="rule-list" id="strategyDetailRules"></div>
+
+        <div class="error-banner hidden" id="strategyDetailErrorBanner" role="alert">
+          <span id="strategyDetailErrorText"></span>
+        </div>
+
+        <button type="button" class="cta-button" id="strategyDetailEditBtn">Edit strategy</button>
+        <button type="button" class="danger-link hidden" id="strategyDetailRemoveExampleBtn">Remove example strategy</button>
+      </section>
     </main>
 
     <div class="cta-wrap" id="homeCta">
