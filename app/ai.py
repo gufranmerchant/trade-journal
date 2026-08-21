@@ -92,10 +92,15 @@ no code fences, with exactly these keys:
   "tp_price": number or null,
   "risk_pct": number or null,
   "r_multiple": number or null,
+  "stated_rr": number or null,
   "pnl_usd": number or null,
   "session": string or null,
   "traded_at": string or null
 }
+stated_rr is ONLY the risk/reward ratio when it is printed as text on the \
+chart itself (e.g. "Risk/reward ratio: 2.56", "R:R 1:2.5", "RR: 3.1") — read \
+the number straight off that label. Do not compute or infer it from prices; \
+if no such label is visible, use null.
 Use null for anything not clearly visible. Never guess."""
 
 

@@ -201,6 +201,7 @@ class TradeUpdate(BaseModel):
     tp_price: float | None = None
     risk_pct: float | None = None
     r_multiple: float | None = None
+    stated_rr: float | None = None
     pnl_usd: float | None = None
     session: str | None = None
 
@@ -218,6 +219,7 @@ def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
         "tp_price": trade.tp_price,
         "risk_pct": trade.risk_pct,
         "r_multiple": trade.r_multiple,
+        "stated_rr": trade.stated_rr,
         "pnl_usd": trade.pnl_usd,
         "session": trade.session,
         "context_note": trade.context_note,
@@ -265,6 +267,7 @@ async def log_trade(
             tp_price=parsed.get("tp_price"),
             risk_pct=parsed.get("risk_pct"),
             r_multiple=parsed.get("r_multiple"),
+            stated_rr=parsed.get("stated_rr"),
             pnl_usd=parsed.get("pnl_usd"),
             session=parsed.get("session"),
             context_note=context_note,
@@ -386,6 +389,7 @@ def update_trade(trade_id: int, payload: TradeUpdate):
         trade.tp_price = payload.tp_price
         trade.risk_pct = payload.risk_pct
         trade.r_multiple = payload.r_multiple
+        trade.stated_rr = payload.stated_rr
         trade.pnl_usd = payload.pnl_usd
         trade.session = payload.session
 

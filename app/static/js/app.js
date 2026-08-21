@@ -107,7 +107,14 @@
     return reward / risk;
   }
 
-  function fmtRR(entry, exit, sl) {
+  function fmtRR(statedRR, entry, exit, sl) {
+    // A chart-printed ratio (e.g. "Risk/reward ratio: 2.56") is ground truth
+    // straight off the screenshot — prefer it over deriving R:R from parsed
+    // entry/SL/exit, which can be wrong (or, for an open/off-plan trade,
+    // meaningless) even when the stated ratio is right there in the image.
+    if (statedRR !== null && statedRR !== undefined && Number.isFinite(Number(statedRR))) {
+      return `1 : ${Number(statedRR).toFixed(2)}`;
+    }
     // Number(null) is 0, not NaN — guard explicitly or a missing SL/entry/
     // exit reads as a real zero price and produces a bogus ratio.
     if ([entry, exit, sl].some((v) => v === null || v === undefined)) return "—";
@@ -525,7 +532,7 @@
       el(ids.facts.exit).textContent = fmtPriceValue(trade.exit_price);
       el(ids.facts.sl).textContent = fmtPriceValue(trade.sl_price);
       el(ids.facts.tp).textContent = fmtPriceValue(trade.tp_price);
-      el(ids.facts.rr).textContent = fmtRR(trade.entry_price, trade.exit_price, trade.sl_price);
+      el(ids.facts.rr).textContent = fmtRR(trade.stated_rr, trade.entry_price, trade.exit_price, trade.sl_price);
     }
 
     const offplanBanner = el(ids.offplanBanner);
@@ -767,6 +774,11 @@
   }
 
   function updateRRDisplay() {
+    const statedRR = numOrNull("editStatedRr");
+    if (statedRR !== null) {
+      el("editRR").textContent = `1 : ${statedRR.toFixed(2)}`;
+      return;
+    }
     const rr = computeRR();
     el("editRR").textContent = rr === null ? "—" : `1 : ${rr.toFixed(2)}`;
   }
@@ -781,6 +793,7 @@
     el("editTpPrice").value = trade.tp_price ?? "";
     el("editRiskPct").value = trade.risk_pct ?? "";
     el("editRMultiple").value = trade.r_multiple ?? "";
+    el("editStatedRr").value = trade.stated_rr ?? "";
     el("editPnlUsd").value = trade.pnl_usd ?? "";
     updateRRDisplay();
   }
@@ -832,6 +845,7 @@
       tp_price: numOrNull("editTpPrice"),
       risk_pct: numOrNull("editRiskPct"),
       r_multiple: numOrNull("editRMultiple"),
+      stated_rr: numOrNull("editStatedRr"),
       pnl_usd: numOrNull("editPnlUsd"),
       session: strOrNull("editSession"),
     };
@@ -903,7 +917,7 @@
         onConfirm: handleDeleteTrade,
       });
     });
-    ["editEntryPrice", "editExitPrice", "editSlPrice"].forEach((id) => {
+    ["editEntryPrice", "editExitPrice", "editSlPrice", "editStatedRr"].forEach((id) => {
       el(id).addEventListener("input", updateRRDisplay);
     });
   }

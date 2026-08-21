@@ -87,6 +87,7 @@ class Trade(Base):
     tp_price = Column(Float)                          # take-profit
     risk_pct = Column(Float)
     r_multiple = Column(Float)                       # +2.1, -1.0
+    stated_rr = Column(Float)                         # chart-printed ratio, e.g. "Risk/reward ratio: 2.56" -> 2.56; preferred over computing R:R from entry/SL/exit when present
     pnl_usd = Column(Float)                           # +184.50, -92.00 — supplementary, null if not visible
     session = Column(String)                         # "London open"
     traded_at = Column(DateTime)
