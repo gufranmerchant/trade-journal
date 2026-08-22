@@ -16,7 +16,7 @@ suggest_setup judgment is advisory and single-trade scoped: it rides along
 in this response only (see the `setup_suggestion` key), never persisted to
 the Trade row and never returned by GET/PATCH /trades/{id}.
 
-GET /trades and GET /users/{user_id}/dashboard read that history back:
+GET /trades and GET /dashboard read that history back:
 a filterable trade list, and the rolling discipline score + rule-adherence
 streak the dashboard renders. DELETE /trades/{id} hard-deletes a trade —
 nothing else references a trade by id, so there's no soft-delete concern.
@@ -39,21 +39,27 @@ first time a user has zero strategy rows at all (_seed_example_strategy_if_
 needed) — the app has no preset strategies otherwise, so this one is always
 clearly tagged and removed the same soft-delete way as any other.
 
-POST /users creates the user row everything else hangs off of (email must
-be unique) — there's no auth yet, so this is just enough to seed data.
+Auth: every endpoint below except GET / and the static mount depends on
+app.auth.get_current_user_id, which verifies the caller's Clerk session
+token and resolves it to a row in our own users table (creating one on
+first sign-in). No endpoint accepts a user_id from the request anymore —
+that used to be a plain query/body param, which meant anyone could read or
+modify anyone else's trades by editing it. The user id used in every query
+below always comes from the verified token, never from the client.
 """
 
 import logging
-from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Base, User, Strategy, Trade
+from app.auth import get_current_user_id
+from app.db import engine
+from app.models import User, Strategy, Trade
 from app import ai
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
@@ -62,8 +68,6 @@ from app import ai
 # see what the vision model actually returned for a given screenshot.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 
-engine = create_engine("sqlite:///journal.db")
-Base.metadata.create_all(engine)
 app = FastAPI(title="Mirror")
 
 # Plain HTML/CSS/JS frontend, no build step — served as static files so it
@@ -113,18 +117,12 @@ def compute_streak(recent_trades: list[Trade]) -> int:
     return streak
 
 
-class UserCreate(BaseModel):
-    email: str
-    display_name: str | None = None
-
-
 class RuleIn(BaseModel):
     id: int | None = None
     text: str
 
 
 class StrategyCreate(BaseModel):
-    user_id: int
     name: str
     description: str | None = None
     direction_bias: str | None = None
@@ -132,7 +130,6 @@ class StrategyCreate(BaseModel):
 
 
 class StrategyUpdate(BaseModel):
-    user_id: int
     name: str | None = None
     description: str | None = None
     direction_bias: str | None = None
@@ -213,27 +210,6 @@ def _seed_example_strategy_if_needed(s: Session, user_id: int) -> None:
     s.commit()
 
 
-@app.post("/users")
-def create_user(payload: UserCreate):
-    with Session(engine) as s:
-        existing = s.scalar(select(User).where(User.email == payload.email))
-        if existing is not None:
-            raise HTTPException(409, "A user with this email already exists")
-
-        user = User(email=payload.email, display_name=payload.display_name)
-        s.add(user)
-        s.commit()
-        s.refresh(user)
-
-        return {
-            "id": user.id,
-            "email": user.email,
-            "display_name": user.display_name,
-            "xp": user.xp,
-            "discipline_score": user.discipline_score,
-        }
-
-
 class TradeUpdate(BaseModel):
     """All fields the detail screen lets a user correct after a screenshot
     parse got something wrong. Unlike StrategyUpdate, a field left out of the
@@ -241,7 +217,6 @@ class TradeUpdate(BaseModel):
     the edit form always submits every field together, so "not sent" and
     "cleared" are the same intent, not a partial patch of unrelated fields.
     """
-    user_id: int
     instrument: str | None = None
     direction: str | None = None
     entry_price: float | None = None
@@ -286,10 +261,10 @@ def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
 
 @app.post("/trades")
 async def log_trade(
-    user_id: int = Form(...),
     context_note: str = Form(""),
     strategy_id: int | None = Form(None),
     screenshot: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
 ):
     image_bytes = await screenshot.read()
 
@@ -375,12 +350,15 @@ async def log_trade(
 
 
 class TradeAdoptStrategy(BaseModel):
-    user_id: int
     strategy_id: int
 
 
 @app.post("/trades/{trade_id}/adopt-strategy")
-def adopt_strategy_for_trade(trade_id: int, payload: TradeAdoptStrategy):
+def adopt_strategy_for_trade(
+    trade_id: int,
+    payload: TradeAdoptStrategy,
+    user_id: int = Depends(get_current_user_id),
+):
     """Retroactively links an off-plan trade to a strategy just discovered
     from it — the "Save as strategy" action on the off-plan smart-suggestion
     card. Only strategy_id/is_off_plan/off_plan_origin change: rule_results,
@@ -392,13 +370,13 @@ def adopt_strategy_for_trade(trade_id: int, payload: TradeAdoptStrategy):
     """
     with Session(engine) as s:
         trade = s.get(Trade, trade_id)
-        if trade is None or trade.user_id != payload.user_id:
+        if trade is None or trade.user_id != user_id:
             raise HTTPException(404, "Trade not found for this user")
         if not trade.is_off_plan:
             raise HTTPException(400, "Trade is not off-plan")
 
         strategy = s.get(Strategy, payload.strategy_id)
-        if strategy is None or strategy.user_id != payload.user_id:
+        if strategy is None or strategy.user_id != user_id:
             raise HTTPException(404, "Strategy not found for this user")
 
         trade.strategy_id = strategy.id
@@ -412,9 +390,9 @@ def adopt_strategy_for_trade(trade_id: int, payload: TradeAdoptStrategy):
 
 @app.get("/trades")
 def list_trades(
-    user_id: int,
     strategy_id: int | None = None,
     direction: str | None = None,
+    user_id: int = Depends(get_current_user_id),
 ):
     with Session(engine) as s:
         query = select(Trade).where(Trade.user_id == user_id)
@@ -447,7 +425,7 @@ def list_trades(
 
 
 @app.get("/trades/{trade_id}")
-def get_trade(trade_id: int, user_id: int):
+def get_trade(trade_id: int, user_id: int = Depends(get_current_user_id)):
     with Session(engine) as s:
         trade = s.get(Trade, trade_id)
         if trade is None or trade.user_id != user_id:
@@ -462,10 +440,14 @@ def get_trade(trade_id: int, user_id: int):
 
 
 @app.patch("/trades/{trade_id}")
-def update_trade(trade_id: int, payload: TradeUpdate):
+def update_trade(
+    trade_id: int,
+    payload: TradeUpdate,
+    user_id: int = Depends(get_current_user_id),
+):
     with Session(engine) as s:
         trade = s.get(Trade, trade_id)
-        if trade is None or trade.user_id != payload.user_id:
+        if trade is None or trade.user_id != user_id:
             raise HTTPException(404, "Trade not found for this user")
 
         trade.instrument = payload.instrument
@@ -492,7 +474,7 @@ def update_trade(trade_id: int, payload: TradeUpdate):
 
 
 @app.delete("/trades/{trade_id}")
-def delete_trade(trade_id: int, user_id: int):
+def delete_trade(trade_id: int, user_id: int = Depends(get_current_user_id)):
     """Hard delete — unlike strategies, a trade has no rulebook other trades
     depend on, so there's nothing to preserve by soft-deleting it."""
     with Session(engine) as s:
@@ -515,12 +497,14 @@ def delete_trade(trade_id: int, user_id: int):
 
 
 class TradeBulkDelete(BaseModel):
-    user_id: int
     trade_ids: list[int]
 
 
 @app.delete("/trades")
-def bulk_delete_trades(payload: TradeBulkDelete):
+def bulk_delete_trades(
+    payload: TradeBulkDelete,
+    user_id: int = Depends(get_current_user_id),
+):
     """Multi-select delete from the dashboard's trade list — same hard-delete
     and XP-decrement rule as DELETE /trades/{id}, just batched into one
     commit so selecting a dozen trades doesn't mean a dozen round-trips.
@@ -529,14 +513,14 @@ def bulk_delete_trades(payload: TradeBulkDelete):
     with Session(engine) as s:
         trades = s.scalars(
             select(Trade).where(
-                Trade.user_id == payload.user_id,
+                Trade.user_id == user_id,
                 Trade.id.in_(payload.trade_ids),
             )
         ).all()
 
         total_xp = sum(t.xp_earned or 0 for t in trades)
         if total_xp:
-            user = s.get(User, payload.user_id)
+            user = s.get(User, user_id)
             if user:
                 user.xp = max(0, user.xp - total_xp)
 
@@ -547,8 +531,8 @@ def bulk_delete_trades(payload: TradeBulkDelete):
     return Response(status_code=204)
 
 
-@app.get("/users/{user_id}/dashboard")
-def get_dashboard(user_id: int):
+@app.get("/dashboard")
+def get_dashboard(user_id: int = Depends(get_current_user_id)):
     with Session(engine) as s:
         user = s.get(User, user_id)
         if user is None:
@@ -579,14 +563,17 @@ def get_dashboard(user_id: int):
 
 
 @app.post("/strategies")
-def create_strategy(payload: StrategyCreate):
+def create_strategy(
+    payload: StrategyCreate,
+    user_id: int = Depends(get_current_user_id),
+):
     with Session(engine) as s:
-        user = s.get(User, payload.user_id)
+        user = s.get(User, user_id)
         if user is None:
             raise HTTPException(404, "User not found")
 
         strategy = Strategy(
-            user_id=payload.user_id,
+            user_id=user_id,
             name=payload.name,
             description=payload.description,
             direction_bias=payload.direction_bias,
@@ -599,7 +586,10 @@ def create_strategy(payload: StrategyCreate):
 
 
 @app.get("/strategies")
-def list_strategies(user_id: int, is_active: bool | None = None):
+def list_strategies(
+    is_active: bool | None = None,
+    user_id: int = Depends(get_current_user_id),
+):
     with Session(engine) as s:
         _seed_example_strategy_if_needed(s, user_id)
 
@@ -613,10 +603,14 @@ def list_strategies(user_id: int, is_active: bool | None = None):
 
 
 @app.patch("/strategies/{strategy_id}")
-def update_strategy(strategy_id: int, payload: StrategyUpdate):
+def update_strategy(
+    strategy_id: int,
+    payload: StrategyUpdate,
+    user_id: int = Depends(get_current_user_id),
+):
     with Session(engine) as s:
         strategy = s.get(Strategy, strategy_id)
-        if strategy is None or strategy.user_id != payload.user_id:
+        if strategy is None or strategy.user_id != user_id:
             raise HTTPException(404, "Strategy not found for this user")
 
         if payload.name is not None:

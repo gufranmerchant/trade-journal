@@ -7,13 +7,12 @@
 (() => {
   "use strict";
 
-  // No auth yet, so the active user comes from ?user_id= or localStorage,
-  // falling back to 1. Swap this out once real login exists.
-  const params = new URLSearchParams(window.location.search);
-  const USER_ID = Number(
-    params.get("user_id") || window.localStorage.getItem("jt_user_id") || 1
-  );
-  window.localStorage.setItem("jt_user_id", String(USER_ID));
+  // Auth: Clerk (loaded via the hosted <script> tag in index.html) owns
+  // sign-in/sign-up/sign-out; this app only needs its session token to send
+  // as a Bearer header. See authFetch/fetchJSON below and boot() at the
+  // bottom of this file, which gates the whole app behind Clerk's sign-in
+  // state instead of a ?user_id= param.
+  let clerk = null;
 
   const RING_RADIUS = 76;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -141,8 +140,43 @@
       .replace(/'/g, "&#39;");
   }
 
+  // Every API call (except the one-time Clerk script/boot sequence) goes
+  // through this — JSON or multipart alike, POST/PATCH/DELETE included —
+  // so the current Clerk session token rides along as a Bearer header; the
+  // backend resolves the actual user from that token and ignores anything
+  // else, so there's no user_id left to pass here. This is the only place
+  // in app.js that calls the real `fetch()` — every request, including the
+  // multipart screenshot upload in handleSubmit, goes through this instead
+  // of a one-off fetch, so a future endpoint can't quietly skip auth.
+  //
+  // getToken() is documented to mint/refresh a valid token on every call,
+  // but if it ever comes back empty (e.g. racing Clerk's own background
+  // refresh) we used to silently send the request with no Authorization
+  // header at all — indistinguishable, from the server's side, from some
+  // other code path having skipped auth entirely, and it always ends in a
+  // 401. Retry briefly instead of doing that, and if it still can't get a
+  // token, fail loudly here rather than let a bad request go out.
+  async function authFetch(url, options = {}) {
+    if (!clerk || !clerk.session) {
+      throw new Error("You're signed out — please sign in and try again.");
+    }
+
+    let token = null;
+    for (let attempt = 0; attempt < 3 && !token; attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 200));
+      token = await clerk.session.getToken();
+    }
+    if (!token) {
+      throw new Error("Couldn't verify your session — try refreshing the page.");
+    }
+
+    const headers = new Headers(options.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    return fetch(url, { ...options, headers });
+  }
+
   async function fetchJSON(url) {
-    const res = await fetch(url);
+    const res = await authFetch(url);
     if (!res.ok) {
       const err = new Error(`${res.status} ${res.statusText}`);
       err.status = res.status;
@@ -478,10 +512,10 @@
       message: "This can't be undone.",
       confirmLabel: "Delete",
       onConfirm: async () => {
-        const res = await fetch(`/trades?user_id=${USER_ID}`, {
+        const res = await authFetch(`/trades`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: USER_ID, trade_ids: ids }),
+          body: JSON.stringify({ trade_ids: ids }),
         });
         if (!res.ok) {
           let message = `Request failed (${res.status})`;
@@ -510,8 +544,8 @@
   function renderLoadError() {
     el("tradeList").innerHTML = `
       <div class="empty-state card">
-        <h3>Couldn't load this user</h3>
-        <p>No user #${USER_ID} yet — create one via POST /users, or pass ?user_id= in the URL.</p>
+        <h3>Couldn't load your account</h3>
+        <p>Something went wrong talking to the server — try signing out and back in.</p>
       </div>`;
     el("filters").innerHTML = "";
   }
@@ -522,9 +556,9 @@
     let dashboard, trades, strategies;
     try {
       [dashboard, trades, strategies] = await Promise.all([
-        fetchJSON(`/users/${USER_ID}/dashboard`),
-        fetchJSON(`/trades?user_id=${USER_ID}`),
-        fetchJSON(`/strategies?user_id=${USER_ID}&is_active=true`),
+        fetchJSON(`/dashboard`),
+        fetchJSON(`/trades`),
+        fetchJSON(`/strategies?is_active=true`),
       ]);
     } catch (err) {
       renderLoadError();
@@ -549,6 +583,8 @@
   // ---------------------------------------------------------------------
 
   function showView(view) {
+    el("authLoadingView").classList.toggle("hidden", view !== "authLoading");
+    el("authView").classList.toggle("hidden", view !== "auth");
     el("homeView").classList.toggle("hidden", view !== "home");
     el("logView").classList.toggle("hidden", view !== "log");
     el("detailView").classList.toggle("hidden", view !== "detail");
@@ -863,21 +899,29 @@
     renderSetupSuggestion(trade);
   }
 
+  // Guards against firing a second POST /trades while the first is still in
+  // flight — the AI parse/rule-check pass takes a few real seconds, and
+  // nothing else was stopping an impatient extra click (or the screen
+  // re-appearing after being navigated away and back) from submitting the
+  // same screenshot again, which is exactly how duplicate trades happened.
+  let submittingTrade = false;
+
   async function handleSubmit() {
-    if (!selectedFile) return;
+    if (!selectedFile || submittingTrade) return;
+    submittingTrade = true;
+    el("submitTradeBtn").disabled = true;
     hideError();
     showLogSubView("loading");
 
     try {
       const form = new FormData();
-      form.append("user_id", String(USER_ID));
       form.append("context_note", el("contextNote").value.trim());
       if (selectedStrategyValue !== OFFPLAN_VALUE) {
         form.append("strategy_id", selectedStrategyValue);
       }
       form.append("screenshot", selectedFile, selectedFile.name);
 
-      const res = await fetch("/trades", { method: "POST", body: form });
+      const res = await authFetch("/trades", { method: "POST", body: form });
       if (!res.ok) {
         let message = `Request failed (${res.status})`;
         try {
@@ -898,6 +942,9 @@
     } catch (err) {
       showLogSubView("form");
       showError(err.message || "Something went wrong — check your connection and try again.");
+      el("submitTradeBtn").disabled = false;
+    } finally {
+      submittingTrade = false;
     }
   }
 
@@ -1037,7 +1084,7 @@
 
     let trade;
     try {
-      trade = await fetchJSON(`/trades/${tradeId}?user_id=${USER_ID}`);
+      trade = await fetchJSON(`/trades/${tradeId}`);
     } catch (err) {
       showDetailSubView("error");
       return;
@@ -1066,7 +1113,6 @@
     saveBtn.disabled = true;
 
     const payload = {
-      user_id: USER_ID,
       instrument: strOrNull("editInstrument"),
       direction: strOrNull("editDirection"),
       entry_price: numOrNull("editEntryPrice"),
@@ -1081,7 +1127,7 @@
     };
 
     try {
-      const res = await fetch(`/trades/${currentDetailTradeId}`, {
+      const res = await authFetch(`/trades/${currentDetailTradeId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1115,7 +1161,7 @@
 
   async function handleDeleteTrade() {
     if (currentDetailTradeId === null) return;
-    const res = await fetch(`/trades/${currentDetailTradeId}?user_id=${USER_ID}`, {
+    const res = await authFetch(`/trades/${currentDetailTradeId}`, {
       method: "DELETE",
     });
     if (!res.ok) {
@@ -1321,10 +1367,10 @@
     const btn = el("strategyDetailRemoveExampleBtn");
     btn.disabled = true;
     try {
-      const res = await fetch(`/strategies/${strategyDetailStrategyId}`, {
+      const res = await authFetch(`/strategies/${strategyDetailStrategyId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: USER_ID, is_active: false }),
+        body: JSON.stringify({ is_active: false }),
       });
       if (!res.ok) {
         let message = `Request failed (${res.status})`;
@@ -1379,7 +1425,7 @@
 
   async function refreshStrategiesCache() {
     try {
-      strategiesCache = await fetchJSON(`/strategies?user_id=${USER_ID}&is_active=true`);
+      strategiesCache = await fetchJSON(`/strategies?is_active=true`);
     } catch (err) {
       // keep whatever was cached before — the picker/filters just won't
       // reflect the latest save until the next successful load
@@ -1438,11 +1484,11 @@
     saveBtn.disabled = true;
 
     try {
-      const payload = { user_id: USER_ID, name, direction_bias: directionBias, rules };
+      const payload = { name, direction_bias: directionBias, rules };
       const url = editingStrategyId === null ? "/strategies" : `/strategies/${editingStrategyId}`;
       const method = editingStrategyId === null ? "POST" : "PATCH";
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1468,10 +1514,10 @@
         const tradeIdToLink = suggestionSourceTradeId;
         suggestionSourceTradeId = null;
         try {
-          const linkRes = await fetch(`/trades/${tradeIdToLink}/adopt-strategy`, {
+          const linkRes = await authFetch(`/trades/${tradeIdToLink}/adopt-strategy`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: USER_ID, strategy_id: savedStrategy.id }),
+            body: JSON.stringify({ strategy_id: savedStrategy.id }),
           });
           if (linkRes.ok) {
             const linkedTrade = await linkRes.json();
@@ -1499,10 +1545,10 @@
   // .../is_active toggle, not a new deletion path on the backend.
   async function handleDeleteStrategy() {
     if (editingStrategyId === null) return;
-    const res = await fetch(`/strategies/${editingStrategyId}`, {
+    const res = await authFetch(`/strategies/${editingStrategyId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, is_active: false }),
+      body: JSON.stringify({ is_active: false }),
     });
     if (!res.ok) {
       let message = `Request failed (${res.status})`;
@@ -1562,7 +1608,7 @@
 
   async function loadManageStrategies() {
     try {
-      manageStrategiesCache = await fetchJSON(`/strategies?user_id=${USER_ID}`);
+      manageStrategiesCache = await fetchJSON(`/strategies`);
     } catch (err) {
       manageStrategiesCache = [];
     }
@@ -1570,10 +1616,10 @@
   }
 
   async function setStrategyActive(strategyId, isActive) {
-    const res = await fetch(`/strategies/${strategyId}`, {
+    const res = await authFetch(`/strategies/${strategyId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, is_active: isActive }),
+      body: JSON.stringify({ is_active: isActive }),
     });
     if (!res.ok) {
       let message = `Request failed (${res.status})`;
@@ -1715,13 +1761,28 @@
     });
   }
 
-  async function init() {
+  // ---------------------------------------------------------------------
+  // Auth gate — Clerk owns sign-in/sign-up/sign-out; this app just waits
+  // for a signed-in user before wiring/loading anything, and drops back to
+  // the sign-in screen the moment Clerk says there isn't one (e.g. after
+  // Sign out). The rest of app.js is unchanged from a plain user_id build
+  // except that authFetch/fetchJSON attach the session token instead.
+  // ---------------------------------------------------------------------
+
+  let appWired = false;
+
+  function wireAppOnce() {
+    if (appWired) return;
+    appWired = true;
     wireTheme();
     el("logTradeBtn").addEventListener("click", openLogScreen);
     el("viewStrategyRulesLink").addEventListener("click", () => {
       const strategyId = Number(el("viewStrategyRulesLink").dataset.strategyId);
       if (!strategyId) return;
       openStrategyDetailScreen(strategyId, "home");
+    });
+    el("signOutBtn").addEventListener("click", () => {
+      clerk.signOut();
     });
     wireLogScreen();
     wireDetailScreen();
@@ -1730,8 +1791,147 @@
     wireManageScreen();
     wireConfirmModal();
     wireSelectMode();
-    await loadDashboard();
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  // The hosted <script> tag in index.html is async and self-initializes
+  // window.Clerk (reading data-clerk-publishable-key) once it executes —
+  // which can land after DOMContentLoaded, so poll briefly instead of
+  // assuming it's already there.
+  async function waitForClerkScript() {
+    const start = Date.now();
+    while (!window.Clerk) {
+      if (Date.now() - start > 10000) throw new Error("Clerk failed to load");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return window.Clerk;
+  }
+
+  // Clerk's own docs are explicit that `session`/`user` can still be
+  // undefined right after `load()` resolves ("If the session is loading,
+  // this field will be undefined") — `load()`'s promise settling is NOT the
+  // documented "safe to use session/getToken now" signal. `loaded` (backed
+  // by `status` reaching "ready" or "degraded") is that signal. On a fresh
+  // sign-in this gap is invisible because the interactive widget flow
+  // already has a fully-populated session by the time it hands off. On a
+  // hard refresh, Clerk has to re-fetch the Client from the server, and
+  // without this wait the dashboard/trades/strategies fetches were firing
+  // during that gap — with no session yet to mint a token from, they went
+  // out unauthenticated and got 401s.
+  async function waitForClerkReady(clerkInstance) {
+    if (clerkInstance.loaded) return;
+    await new Promise((resolve) => {
+      const unsubscribe = clerkInstance.addListener(() => {
+        if (clerkInstance.loaded) {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+  }
+
+  async function boot() {
+    showView("authLoading");
+    try {
+      clerk = await waitForClerkScript();
+      await clerk.load();
+      await waitForClerkReady(clerk);
+    } catch (err) {
+      el("authLoadingView").innerHTML = `
+        <div class="empty-state card">
+          <h3>Couldn't load sign-in</h3>
+          <p>Check your connection and reload the page.</p>
+        </div>`;
+      return;
+    }
+
+    // The <SignIn/> component must NOT stay mounted once there's a signed-in
+    // user: Clerk's own component detects "already signed in" and tries to
+    // redirect away to the Home URL — which, in this single-page app, IS the
+    // current URL. Home URL === current URL with SignIn still mounted is a
+    // documented Clerk infinite-redirect trigger, and on a development
+    // instance that redirect carries the dev-browser session-sync
+    // "__clerk_db_jwt" query param, which is exactly the loop this was
+    // causing. So mount/unmount it in lockstep with auth state instead of
+    // mounting it once up front and leaving it there.
+    let signInMounted = false;
+    function mountSignInWidget() {
+      if (signInMounted) return;
+      clerk.mountSignIn(el("clerkAuthMount"));
+      signInMounted = true;
+    }
+    function unmountSignInWidget() {
+      if (!signInMounted) return;
+      clerk.unmountSignIn(el("clerkAuthMount"));
+      signInMounted = false;
+    }
+
+    // The header's person icon used to be an inert placeholder — Clerk's
+    // prebuilt UserButton replaces it with a real avatar + popover (profile
+    // info, account management, its own sign-out). Sized to match the
+    // existing 36px .avatar box (see style.css) rather than Clerk's default,
+    // so it sits at the same visual weight as the sign-out icon next to it.
+    let userButtonMounted = false;
+    function mountUserButtonWidget() {
+      if (userButtonMounted) return;
+      clerk.mountUserButton(el("userButtonMount"), {
+        appearance: { elements: { avatarBox: { width: "36px", height: "36px" } } },
+      });
+      userButtonMounted = true;
+    }
+    function unmountUserButtonWidget() {
+      if (!userButtonMounted) return;
+      clerk.unmountUserButton(el("userButtonMount"));
+      userButtonMounted = false;
+    }
+
+    let wasSignedIn = false;
+    // Guards the very first emission specifically: wasSignedIn's initial
+    // value (false) would otherwise be indistinguishable from a real
+    // "still signed out" no-op below, and the auth view would never show
+    // for a brand-new, never-signed-in visitor.
+    let authStateInitialized = false;
+    // Takes the listener's emitted `user` directly rather than re-reading
+    // `clerk.user` off the instance — by the time this fires, Clerk is
+    // confirmed ready (see waitForClerkReady above), so the two agree, but
+    // the emission is the value Clerk itself is telling us just changed.
+    //
+    // addListener fires on EVERY client-state emission, not just real
+    // sign-in/sign-out — critically, Clerk's own background session-token
+    // refresh (every ~60s) re-emits with the SAME user still signed in.
+    // The old version of this function reacted to every emission
+    // unconditionally (showView("home"), etc.), which forced the user back
+    // to the dashboard out from under whatever screen they were actually on
+    // roughly once a minute. Gate on an actual signed-in/signed-out
+    // TRANSITION — only that (or the first-ever check) is worth navigating
+    // for; a same-state emission (refresh) must be a complete no-op for
+    // navigation/data-loading.
+    async function syncAuthState({ user } = {}) {
+      const signedIn = !!user;
+      const isTransition = !authStateInitialized || signedIn !== wasSignedIn;
+      authStateInitialized = true;
+      wasSignedIn = signedIn;
+
+      if (!isTransition) return; // background refresh — nothing to react to
+
+      if (signedIn) {
+        unmountSignInWidget();
+        mountUserButtonWidget();
+        wireAppOnce();
+        showView("home");
+        await loadDashboard();
+      } else {
+        unmountUserButtonWidget();
+        mountSignInWidget();
+        showView("auth");
+      }
+    }
+
+    // addListener fires immediately on registration by default — since
+    // waitForClerkReady above already guarantees Clerk has settled, that
+    // immediate emission IS the first real auth check, so there's no
+    // separate manual call needed (and no risk of running it twice).
+    clerk.addListener(syncAuthState);
+  }
+
+  document.addEventListener("DOMContentLoaded", boot);
 })();

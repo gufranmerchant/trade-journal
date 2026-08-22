@@ -3,3 +3,5 @@ sqlalchemy
 pydantic
 python-multipart
 groq
+pyjwt[crypto]
+httpx

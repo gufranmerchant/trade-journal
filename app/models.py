@@ -22,6 +22,11 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
+    # Maps this row to the Clerk user that owns it — resolved from the
+    # verified session token on every request (see app/auth.py), never taken
+    # from anything the client sends. Nullable only so older/manually-seeded
+    # rows don't violate the column; every row created through auth.py has one.
+    clerk_user_id = Column(String, unique=True, nullable=True, index=True)
     email = Column(String, unique=True, nullable=False)
     display_name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)

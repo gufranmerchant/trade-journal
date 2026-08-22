@@ -198,19 +198,18 @@ button {
   gap: 8px;
 }
 
+/* Wraps Clerk's mounted UserButton — sizing/clipping only, since Clerk's
+   own component renders its own avatar image/initials and background. */
 .avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--teal-tint);
-  color: var(--teal-dark);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.avatar svg { width: 18px; height: 18px; }
-
 /* ---------- Content ---------- */
 .content {
   flex: 1;
@@ -841,6 +840,15 @@ button {
   transition: border-color 0.15s ease;
 }
 .secondary-button:hover { border-color: var(--card-border-hover); }
+
+/* ---------- Auth gate (Clerk sign-in/up mount) ---------- */
+.auth-mount {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
 
 /* ---------- Loading state ---------- */
 .loading-state {

@@ -12,34 +12,58 @@ a rule still fails that rule.
 
 Status: backend (data model, two-pass AI pipeline, trade/dashboard/strategy endpoints)
 plus a static frontend (`app/static/`) covering the dashboard, screenshot-upload flow,
-trade detail/edit screen, and strategy create/edit screen. No onboarding flow or auth
-yet — the active user still comes from `?user_id=`/`localStorage`, so a brand-new user
-still needs `POST /users` via `/docs` before the app has anything to show them.
+trade detail/edit screen, and strategy create/edit screen. Auth is Clerk: the frontend
+gates on Clerk sign-in/sign-up and every protected endpoint resolves the caller from a
+verified Clerk session token (see Auth section below) — there's no `?user_id=`/`POST
+/users` flow anymore, and no endpoint accepts a client-supplied user id.
 
 ## Commands
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env        # then paste a real GROQ_API_KEY into .env
+cp .env.example .env        # then paste real GROQ_API_KEY / CLERK_SECRET_KEY / CLERK_PUBLISHABLE_KEY into .env
 uvicorn app.main:app --reload
 ```
 
 The dashboard frontend is served at http://127.0.0.1:8000/ (`app/static/`, no build
-step). Interactive API docs at http://127.0.0.1:8000/docs are still the only way to
-exercise endpoints the frontend doesn't cover (`POST /trades`, `POST`/`PATCH
-/strategies`, `POST /users`).
+step) and requires signing in via the Clerk widget it mounts. Interactive API docs at
+http://127.0.0.1:8000/docs still exist but every route there needs a real
+`Authorization: Bearer <clerk session token>` header now too — there's no more
+`user_id` query/body param to fill in instead.
 
 No test/lint/build tooling is configured yet — don't assume `pytest`, `ruff`, etc. exist.
 
 ## Architecture
 
-Three files carry the whole backend, plus a static frontend:
-
-- `app/models.py` — SQLAlchemy models: `User`, `Strategy`, `Trade`.
+- `app/models.py` — SQLAlchemy models: `User` (now carries `clerk_user_id`), `Strategy`, `Trade`.
 - `app/ai.py` — the two-pass Groq pipeline that turns a screenshot into a judged trade.
-- `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /users/{user_id}/dashboard` (discipline score + streak), `POST`/`GET`/`PATCH /strategies` (rulebook management); also mounts `app/static/` at `/static` and serves `app/static/index.html` at `/`.
+- `app/config.py` — the one place `.env` is read (hand-rolled parser, no python-dotenv); exports `GROQ_API_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
+- `app/db.py` — the shared SQLAlchemy `engine` (+ `Base.metadata.create_all`), split out so `app/auth.py` can use it without importing `app/main.py`.
+- `app/auth.py` — `get_current_user_id`, the FastAPI dependency every protected route uses: verifies the caller's Clerk session token against Clerk's JWKS, and resolves/provisions the matching local `User` row. See Auth section below.
+- `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /dashboard` (discipline score + streak), `POST`/`GET`/`PATCH /strategies` (rulebook management); also mounts `app/static/` at `/static` and serves `app/static/index.html` at `/`.
 - `app/static/` — the dashboard frontend: `index.html` + `css/style.css` + `js/app.js`. No framework, no build step.
+
+### Auth (`app/auth.py`, Clerk)
+
+- The frontend loads Clerk's vanilla-JS SDK via the hosted `<script data-clerk-
+  publishable-key>` tag in `index.html` (Clerk's own quickstart pattern — the
+  publishable key is meant to be client-embedded, unlike the secret key) and mounts
+  `clerk.mountSignIn(...)` into `#clerkAuthMount` when there's no signed-in user;
+  `app.js`'s `boot()` gates the whole app behind `clerk.user` existing.
+- Every API call from `app.js` goes through `authFetch`/`fetchJSON`, which attach
+  `Authorization: Bearer <clerk.session.getToken()>` — the frontend never sends a
+  user id anywhere.
+- `app.auth.get_current_user_id` (a FastAPI dependency) verifies that bearer token's
+  signature against Clerk's JWKS (fetched via the Backend API with `CLERK_SECRET_KEY`
+  and cached in memory — see `_get_signing_key`), then looks up a local `User` by the
+  token's `sub` claim (`clerk_user_id`). If none exists yet — first sign-in — it calls
+  Clerk's Backend API for that user's profile (email, name) and creates the row right
+  there (`_provision_user`), the same thing `POST /users` used to do manually. Every
+  endpoint in `main.py` takes `user_id: int = Depends(get_current_user_id)` instead of
+  a query/body param — there is no code path left that trusts a client-supplied user id.
+- `GET /dashboard` replaced `GET /users/{user_id}/dashboard` — the user id is now
+  implicit in the token, not a path param.
 
 ### Data model shape (`app/models.py`)
 
@@ -69,12 +93,14 @@ fences) via `_strip_to_json`:
    only whether the trader's own stated process was followed. Missing evidence for a rule
    means "not passed," never an assumed pass.
 
-`.env` is loaded manually in `ai.py` via a small hand-rolled parser (no python-dotenv
-dependency) — keep it that way unless there's a reason to add the dependency.
+`.env` is loaded once in `app/config.py` via a small hand-rolled parser (no python-dotenv
+dependency) — keep it that way unless there's a reason to add the dependency; `ai.py`
+and `auth.py` both just import the constants they need from there.
 
 ### Request flow (`app/main.py`)
 
-`POST /trades` (multipart: `user_id`, `context_note`, optional `strategy_id`, `screenshot`):
+`POST /trades` (multipart: `context_note`, optional `strategy_id`, `screenshot`;
+`user_id` comes from `Depends(get_current_user_id)`, not the request):
 
 1. Read screenshot bytes, run Pass 1 (`parse_screenshot`) — this always runs, even
    off-plan, since the trade still needs structured fields.
@@ -91,9 +117,9 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
 
 ### Dashboard reads (`app/main.py`)
 
-- `GET /trades?user_id=&strategy_id=&direction=` — trade list for a user, optionally
-  filtered, newest first.
-- `GET /users/{user_id}/dashboard` — recomputes and returns `discipline_score` and
+- `GET /trades?strategy_id=&direction=` — trade list for the authenticated user,
+  optionally filtered, newest first.
+- `GET /dashboard` — recomputes and returns `discipline_score` and
   `current_streak` from the user's trade history (also writes `discipline_score` back
   onto the `User` row, since the model documents it as a stored/recomputed field).
   Both metrics are windowed to the most recent `DISCIPLINE_WINDOW` (20) trades and treat
@@ -107,10 +133,10 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
 ### Strategy management (`app/main.py`)
 
 - `POST /strategies` — create, with an initial `rules` list (`{"text": str}`, no `id`
-  needed). `GET /strategies?user_id=&is_active=` — list, optionally filtered to
-  active/inactive. `PATCH /strategies/{id}` — partial update (name, description,
-  direction_bias, is_active, rules); every request body carries `user_id` and gets a 404
-  if it doesn't own the strategy, same ownership check `POST /trades` already does.
+  needed). `GET /strategies?is_active=` — list for the authenticated user, optionally
+  filtered to active/inactive. `PATCH /strategies/{id}` — partial update (name,
+  description, direction_bias, is_active, rules); 404s if the strategy doesn't belong
+  to the authenticated user, same ownership check `POST /trades` already does.
 - Rule ids are assigned by the server and never renumbered (`_apply_rule_updates`): a
   `PATCH` rule entry with an `id` matching an existing rule updates that rule's text
   in place; an entry with no `id` (or an unrecognized one) is treated as new and gets
@@ -121,7 +147,7 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   matching the model's existing soft-delete field, so a trade's stored `rule_results`
   keeps referencing a real (if inactive) rulebook. Trades themselves *are* hard-deleted
   (`DELETE /trades/{id}`), since nothing else references a trade by id.
-  `GET /strategies?user_id=` with no `is_active` filter returns both active and inactive
+  `GET /strategies` with no `is_active` filter returns both active and inactive
   strategies — the only way to see (and reactivate) a deactivated one.
 
 ### Frontend (`app/static/`)
@@ -130,13 +156,19 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   DOM rendering. This is deliberate (see the comment at the top of `main.py`): it's
   mounted under `/static` rather than served as raw files off `/` so it can become a PWA
   later without changing how the API is hosted.
-- No auth yet, so the active user comes from `?user_id=` in the URL, falling back to
-  `localStorage`, falling back to user `1`. Swap this for real login later.
-- On load, `app.js` fetches `GET /users/{id}/dashboard`, `GET /trades`, and
+- `boot()` (bottom of `app.js`) is the auth gate: it waits for Clerk's hosted script to
+  set `window.Clerk`, calls `clerk.load()`, mounts the sign-in/up widget once into
+  `#clerkAuthMount`, then toggles between the `authView` and the rest of the app purely
+  on `clerk.user` — `clerk.addListener` re-runs that check on every sign-in/sign-out so
+  there's no manual reload. `wireAppOnce()` (all the `wire*` calls that used to run
+  directly off `DOMContentLoaded`) only runs the first time a session appears.
+- On load, `app.js` fetches `GET /dashboard`, `GET /trades`, and
   `GET /strategies?is_active=true` in parallel and renders: the discipline ring, XP
   bar/level, rule streak, "Rules followed" and "Net P&L · 30d" stat tiles, strategy/
-  direction filter chips, and the trade list. If the user doesn't exist yet, it shows a
-  load-error state pointing at `POST /users`.
+  direction filter chips, and the trade list. If any of those calls fails (token
+  expired mid-session, server hiccup) it shows a load-error state suggesting the user
+  sign in again — there's no more "no user #N yet" case, since the account is always
+  created for you on first sign-in.
 - "Net P&L · 30d" prefers dollars (`Trade.pnl_usd`, summed) but only when *every* trade
   in the 30-day window has one — otherwise it falls back to summing `r_multiple`, same as
   before `pnl_usd` existed. `r_multiple` stays the actual discipline unit everywhere else
@@ -169,11 +201,15 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   `DELETE /trades/{id}`, which also decrements the user's `xp` by whatever that trade had
   earned — `xp` is a running total stored on `User`, not derived on read like
   `discipline_score`/streak are, so a deleted trade's XP would otherwise linger forever.
+- Sign-out is a plain icon button in the home topbar (`#signOutBtn`) that calls
+  `clerk.signOut()` — Clerk's own state-change listener (see `boot()` above) is what
+  actually swaps the view back to the sign-in screen, so this button doesn't do any
+  view-switching itself.
 
 ## Conventions worth knowing
 
 - SQLite file `journal.db` is created at the working directory root on app startup
-  (`create_engine("sqlite:///journal.db")` in `main.py`) — not committed, not migrated;
+  (`create_engine("sqlite:///journal.db")` in `app/db.py`) — not committed, not migrated;
   schema changes currently mean dropping and recreating the DB.
 - Uploaded screenshots have a home (`uploads/`) but `main.py` does not yet write to it —
   `screenshot_path` on `Trade` is defined but unset by the current endpoint.

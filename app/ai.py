@@ -23,26 +23,17 @@ All three passes force strict JSON out (no prose, no markdown fences), same
 discipline as the Mondo finance_ai anomaly checks.
 """
 
-import os
 import json
 import logging
 import re
 import base64
-from pathlib import Path
 from groq import Groq
+
+from app.config import GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
 
-# Lightweight .env loader (no extra dependency) — reads KEY=value lines.
-_env = Path(__file__).resolve().parent.parent / ".env"
-if _env.exists():
-    for line in _env.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
-
-client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+client = Groq(api_key=GROQ_API_KEY)
 
 # llama-4-scout-17b-16e-instruct and llama-3.3-70b-versatile were both
 # deprecated by Groq (2026-06-17, shut off by August); migrated to their
@@ -101,6 +92,16 @@ stated_rr is ONLY the risk/reward ratio when it is printed as text on the \
 chart itself (e.g. "Risk/reward ratio: 2.56", "R:R 1:2.5", "RR: 3.1") — read \
 the number straight off that label. Do not compute or infer it from prices; \
 if no such label is visible, use null.
+pnl_usd is ONLY the realized profit/loss, printed under a label containing \
+words like "Closed PnL", "Realized PnL", "P&L", or "Profit" (e.g. "Closed \
+PnL: 66.373" means pnl_usd is 66.373). On TradingView-style screenshots this \
+is a completely different number from the "Amount" figure printed next to a \
+Target or Stop annotation (e.g. "Target: 2050.00 (2.5%) 1:2.56, Amount: \
+6,637.30") — that Amount is the position's dollar size/exposure at that \
+price level, NOT profit or loss, and must NEVER be used for pnl_usd even if \
+it is the largest or only dollar figure visible on the chart. If no line is \
+explicitly labeled as closed/realized PnL, use null rather than substituting \
+any other dollar amount.
 Use null for anything not clearly visible. Never guess."""
 
 
