@@ -604,6 +604,7 @@
   function showLogSubView(sub) {
     el("logFormView").classList.toggle("hidden", sub !== "form");
     el("logLoadingView").classList.toggle("hidden", sub !== "loading");
+    el("logLimitView").classList.toggle("hidden", sub !== "limit");
     el("logResultView").classList.toggle("hidden", sub !== "result");
   }
 
@@ -933,7 +934,15 @@
         throw new Error(message);
       }
 
-      const trade = await res.json();
+      const body = await res.json();
+
+      if (body.limit_reached) {
+        el("logLimitText").textContent = body.message;
+        showLogSubView("limit");
+        return;
+      }
+
+      const trade = body;
       dashboardDirty = true;
       lastLoggedTradeId = trade.id;
 
@@ -999,6 +1008,11 @@
     });
 
     el("logDoneBtn").addEventListener("click", async () => {
+      await refreshIfDirty();
+      showView("home");
+    });
+
+    el("logLimitDoneBtn").addEventListener("click", async () => {
       await refreshIfDirty();
       showView("home");
     });

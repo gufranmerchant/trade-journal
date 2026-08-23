@@ -49,12 +49,13 @@ below always comes from the verified token, never from the client.
 """
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app import config
@@ -91,6 +92,23 @@ def serve_frontend():
 
 # Rolling window for the discipline score, flat v1 like ai.XP_PER_RULE.
 DISCIPLINE_WINDOW = 20
+
+# Cost guardrail: each logged trade costs 2-3 Groq calls, so this caps free
+# usage per calendar month per user. Change this one value to adjust it.
+FREE_TRADES_PER_MONTH = 20
+
+
+def _trades_logged_this_month(s: Session, user_id: int) -> int:
+    # Computed live off Trade.created_at rather than a stored counter on
+    # User — same "recomputed, not incrementally tracked" approach as
+    # discipline_score/streak below, so a new calendar month resets this
+    # for free with no reset-timestamp bookkeeping to get wrong.
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    return s.scalar(
+        select(func.count()).select_from(Trade)
+        .where(Trade.user_id == user_id, Trade.created_at >= month_start)
+    ) or 0
 
 
 def _trade_compliance(trade: Trade) -> float:
@@ -274,6 +292,19 @@ async def log_trade(
     screenshot: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
 ):
+    # Cost guardrail, checked before any Groq call is made (see
+    # FREE_TRADES_PER_MONTH above) — never trust a frontend-side count for
+    # this, since the whole point is protecting API spend.
+    with Session(engine) as s:
+        if _trades_logged_this_month(s, user_id) >= FREE_TRADES_PER_MONTH:
+            return {
+                "limit_reached": True,
+                "message": (
+                    f"You've used your {FREE_TRADES_PER_MONTH} free trades this "
+                    "month. Subscriptions are coming soon — thanks for testing Mirror!"
+                ),
+            }
+
     image_bytes = await screenshot.read()
 
     # Pass 1 — parse
