@@ -51,12 +51,13 @@ below always comes from the verified token, never from the client.
 import logging
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import config
 from app.auth import get_current_user_id
 from app.db import engine
 from app.models import User, Strategy, Trade
@@ -79,7 +80,14 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", include_in_schema=False)
 def serve_frontend():
-    return FileResponse(STATIC_DIR / "index.html")
+    # index.html carries {{CLERK_PUBLISHABLE_KEY}}/{{CLERK_FRONTEND_API}}
+    # tokens (not a hardcoded key/host) so a Clerk dev->prod instance switch
+    # takes effect on next request instead of needing a rebuild of a static
+    # file — see app/config.py's _clerk_frontend_api.
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace("{{CLERK_PUBLISHABLE_KEY}}", config.CLERK_PUBLISHABLE_KEY)
+    html = html.replace("{{CLERK_FRONTEND_API}}", config.CLERK_FRONTEND_API)
+    return HTMLResponse(html)
 
 # Rolling window for the discipline score, flat v1 like ai.XP_PER_RULE.
 DISCIPLINE_WINDOW = 20

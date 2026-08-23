@@ -27,12 +27,16 @@
        from this instance's own frontend-api domain (derived from the
        publishable key below) and auto-instantiates window.Clerk once loaded.
        The publishable key is meant to be public/client-embedded — unlike
-       CLERK_SECRET_KEY, which never leaves the server (see app/auth.py). -->
+       CLERK_SECRET_KEY, which never leaves the server (see app/auth.py).
+       Both tokens below are substituted server-side (see main.py's
+       serve_frontend) from CLERK_PUBLISHABLE_KEY/CLERK_FRONTEND_API in
+       app/config.py at request time — never hardcode a key/host here, or a
+       dev->prod Clerk instance switch silently won't reach the browser. -->
   <script
     async
     crossorigin="anonymous"
-    data-clerk-publishable-key="pk_test_b2JsaWdpbmctaHVza3ktNzkzOS5jbGVyay5hY2NvdW50cy5kZXYk"
-    src="https://obliging-husky-7939.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    data-clerk-publishable-key="{{CLERK_PUBLISHABLE_KEY}}"
+    src="https://{{CLERK_FRONTEND_API}}/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
     type="text/javascript"
   ></script>
 </head>
