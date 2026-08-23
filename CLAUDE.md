@@ -23,6 +23,7 @@ verified Clerk session token (see Auth section below) — there's no `?user_id=`
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env        # then paste real GROQ_API_KEY / CLERK_SECRET_KEY / CLERK_PUBLISHABLE_KEY into .env
+alembic upgrade head        # creates journal.db's schema — needed once on a fresh clone
 uvicorn app.main:app --reload
 ```
 
@@ -39,7 +40,7 @@ No test/lint/build tooling is configured yet — don't assume `pytest`, `ruff`, 
 - `app/models.py` — SQLAlchemy models: `User` (now carries `clerk_user_id`), `Strategy`, `Trade`.
 - `app/ai.py` — the two-pass Groq pipeline that turns a screenshot into a judged trade.
 - `app/config.py` — the one place `.env` is read (hand-rolled parser, no python-dotenv); exports `GROQ_API_KEY`, `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
-- `app/db.py` — the shared SQLAlchemy `engine` (+ `Base.metadata.create_all`), split out so `app/auth.py` can use it without importing `app/main.py`.
+- `app/db.py` — the shared SQLAlchemy `engine`, split out so `app/auth.py` can use it without importing `app/main.py`. Schema is created/changed only via Alembic migrations (`alembic/`), not by this module — see Conventions below.
 - `app/auth.py` — `get_current_user_id`, the FastAPI dependency every protected route uses: verifies the caller's Clerk session token against Clerk's JWKS, and resolves/provisions the matching local `User` row. See Auth section below.
 - `app/main.py` — the endpoints: `POST /trades` (wires models + ai.py and persists the result), `GET /trades` (filterable list), `GET /dashboard` (discipline score + streak), `POST`/`GET`/`PATCH /strategies` (rulebook management); also mounts `app/static/` at `/static` and serves `app/static/index.html` at `/`.
 - `app/static/` — the dashboard frontend: `index.html` + `css/style.css` + `js/app.js`. No framework, no build step.
@@ -208,8 +209,25 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
 
 ## Conventions worth knowing
 
-- SQLite file `journal.db` is created at the working directory root on app startup
-  (`create_engine("sqlite:///journal.db")` in `app/db.py`) — not committed, not migrated;
-  schema changes currently mean dropping and recreating the DB.
+- `app/db.py` uses `DATABASE_URL` (via `app/config.py`) when it's set — production/Railway,
+  where it's injected by the provisioned Postgres addon (a `postgres://` scheme gets
+  rewritten to `postgresql://` for SQLAlchemy) — and falls back to the local SQLite file
+  `journal.db` (`sqlite:///journal.db`, created at the working directory root on app
+  startup) when it's absent, i.e. local dev. `journal.db` itself is still not committed.
+- Schema changes go through an Alembic migration (`alembic revision --autogenerate -m
+  "..."`, then `alembic upgrade head`), not dropping and recreating the DB — that
+  convention was fine when `journal.db` was disposable local test data, but production
+  now runs on Postgres with real user data that can't be casually wiped. `alembic/env.py`
+  reuses the app's own engine from `app/db.py`, so migrations always target whichever
+  database (SQLite locally, Postgres in prod) the app itself would connect to.
+  `app/db.py` deliberately does **not** call `Base.metadata.create_all` — schema exists
+  only via migrations now, on every environment including a fresh local clone (run
+  `alembic upgrade head` once after cloning; see Commands above). This isn't just style:
+  `alembic/env.py` imports `app/db.py` to get the engine, so a module-level `create_all`
+  there would fire *before* the migration runs and create every table itself, and the
+  migration's own `CREATE TABLE` would then immediately collide with them — breaking
+  `alembic upgrade head` on every genuinely fresh database, which is exactly the
+  Railway-first-deploy case `railway.json`'s `startCommand` (`alembic upgrade head &&
+  uvicorn ...`) runs into.
 - Uploaded screenshots have a home (`uploads/`) but `main.py` does not yet write to it —
   `screenshot_path` on `Trade` is defined but unset by the current endpoint.

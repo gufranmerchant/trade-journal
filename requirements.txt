@@ -5,3 +5,5 @@ python-multipart
 groq
 pyjwt[crypto]
 httpx
+psycopg2-binary
+alembic

@@ -21,3 +21,4 @@ if _env.exists():
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 CLERK_PUBLISHABLE_KEY = os.environ.get("CLERK_PUBLISHABLE_KEY", "")
 CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
