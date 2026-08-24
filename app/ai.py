@@ -1,18 +1,27 @@
 """
 The two-pass AI pipeline — the heart of the app.
 
-Pass 1 (parse):  trade screenshot + one line of context -> structured fields.
+Every pass takes 1-3 images of the same trade (a plain list[bytes]), not a
+single screenshot — the real-world case is a charting-tool image (e.g.
+TradingView) for chart structure alongside a broker/platform image (e.g.
+MT5, FundedNext) for the actual fills. All three system prompts below spell
+out the same source-priority rule: broker/platform numbers win for anything
+numeric (entry/exit/SL/TP/PnL/stated R:R), charting-tool images are for chart
+structure and pattern context only. A single image still works exactly as
+before, just as a one-element list.
+
+Pass 1 (parse):  1-3 images + one line of context -> structured fields.
                  Same shape as ledger_ocr.py, pointed at a chart not a receipt.
 
-Pass 2 (verdict): screenshot + parsed trade + the user's OWN rules -> per-rule
-                 pass/fail, a coach note, and XP. Also given the screenshot
+Pass 2 (verdict): 1-3 images + parsed trade + the user's OWN rules -> per-rule
+                 pass/fail, a coach note, and XP. Also given the images
                  (not just Pass 1's extracted fields) so chart-structure rules
-                 can be checked against the image, not just the trader's note.
+                 can be checked against them, not just the trader's note.
                  The model never judges whether the trade was "good" — only
                  whether the trader followed the rules they themselves
                  defined. Accountability, not advice.
 
-Off-plan advisory (suggest_setup): screenshot + note, off-plan trades only ->
+Off-plan advisory (suggest_setup): 1-3 images + note, off-plan trades only ->
                  either a drafted name + checkable rules if the trade shows a
                  genuine repeatable setup, or an honest "not a setup" verdict
                  if it looks like an impulse/discretionary entry. Never runs
@@ -70,10 +79,10 @@ def _strip_to_json(raw: str) -> dict:
         raise AIResponseError(f"Model returned malformed JSON: {e}") from e
 
 
-PARSE_SYSTEM = """You read a trading screenshot (broker order, chart, or \
-position summary) and extract ONLY the facts visible in it. Do not infer \
-anything not shown. Do not evaluate the trade. Return STRICT JSON, no prose, \
-no code fences, with exactly these keys:
+PARSE_SYSTEM = """You read one or more images of a single trade (broker \
+order, chart, or position summary) and extract ONLY the facts visible in \
+them. Do not infer anything not shown. Do not evaluate the trade. Return \
+STRICT JSON, no prose, no code fences, with exactly these keys:
 {
   "instrument": string or null,
   "direction": "long" | "short" | null,
@@ -102,12 +111,31 @@ price level, NOT profit or loss, and must NEVER be used for pnl_usd even if \
 it is the largest or only dollar figure visible on the chart. If no line is \
 explicitly labeled as closed/realized PnL, use null rather than substituting \
 any other dollar amount.
-Use null for anything not clearly visible. Never guess."""
+Use null for anything not clearly visible. Never guess.
+If more than one image is provided, they are all of the SAME trade, not \
+different trades — one may be a charting tool (e.g. TradingView) showing \
+chart structure/trendlines/drawings, and another may be the actual broker \
+or trading-platform screenshot (e.g. MT5, FundedNext, a prop-firm dashboard) \
+showing the real execution. When extracting numeric values — entry_price, \
+exit_price, sl_price, tp_price, pnl_usd, stated_rr — ALWAYS prefer the \
+numbers shown on a broker/trading-platform screenshot over a charting-tool \
+screenshot, because charting-tool drawings can be forecasts, planned levels, \
+or annotations rather than what was actually filled. Use a charting-tool \
+image only to fill in a field that no broker/platform image shows at all. \
+Never average or blend a number across images — pick the single most \
+trustworthy source for each field using this priority."""
 
 
-def parse_screenshot(image_bytes: bytes, context_note: str) -> dict:
-    """Pass 1 — screenshot + user's one-line context -> structured fields."""
-    b64 = base64.b64encode(image_bytes).decode()
+def parse_screenshot(images: list[bytes], context_note: str) -> dict:
+    """Pass 1 — 1-3 screenshots of the same trade + user's one-line context
+    -> structured fields. See PARSE_SYSTEM for the source-priority rule when
+    more than one image is given (broker/platform numbers over charting-tool
+    numbers)."""
+    image_blocks = [
+        {"type": "image_url",
+         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"}}
+        for img in images
+    ]
     resp = client.chat.completions.create(
         model=VISION_MODEL,
         temperature=0,
@@ -120,9 +148,9 @@ def parse_screenshot(image_bytes: bytes, context_note: str) -> dict:
             {"role": "user", "content": [
                 {"type": "text",
                  "text": f"Trader's note about this trade: {context_note!r}. "
+                         f"{len(images)} image(s) of this same trade follow. "
                          f"Extract the visible trade facts as JSON."},
-                {"type": "image_url",
-                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                *image_blocks,
             ]},
         ],
     )
@@ -134,16 +162,27 @@ def parse_screenshot(image_bytes: bytes, context_note: str) -> dict:
     return _strip_to_json(raw_content)
 
 
-VERDICT_SYSTEM = """You are a trading-discipline coach. You are given a trade \
-screenshot, its extracted data, and the trader's OWN rules for the setup they \
-say they used. Your job is NOT to judge whether the trade was smart, or to \
-give trading advice. Your ONLY job is to check, rule by rule, whether the \
-trader followed the rules THEY defined.
+VERDICT_SYSTEM = """You are a trading-discipline coach. You are given one or \
+more images of a trade, its extracted data, and the trader's OWN rules for \
+the setup they say they used. Your job is NOT to judge whether the trade was \
+smart, or to give trading advice. Your ONLY job is to check, rule by rule, \
+whether the trader followed the rules THEY defined.
 
 Some rules describe chart structure (e.g. a trendline break, a retest, a \
-confirmation candle) — look at the screenshot itself to verify those, not \
-just the extracted numbers or the trader's note. The screenshot is your \
+confirmation candle) — look at the images themselves to verify those, not \
+just the extracted numbers or the trader's note. The images are your \
 primary evidence for anything visual; the note is context, not proof.
+
+If more than one image is provided, they are all of the SAME trade: one may \
+be a charting tool (e.g. TradingView) showing chart structure/trendlines/ \
+patterns, and another may be the actual broker/trading-platform screenshot \
+(e.g. MT5, FundedNext) showing the real execution. Use the charting-tool \
+image as your primary evidence for chart-structure rules (trendlines, \
+support/resistance, candle patterns) — that is exactly what it's for. But \
+for anything numeric (actual entry/exit/SL/TP/PnL), trust the broker/ \
+platform image over the charting tool, since a charting-tool image can show \
+planned or forecast levels rather than what was actually filled; the \
+extracted `trade` data you're given already reflects that same priority.
 
 Core principle: a winning trade that broke a rule still failed the rule. The \
 outcome never validates the process. Be honest but not harsh — name one thing \
@@ -159,14 +198,21 @@ Evaluate every rule you are given. If the evidence for a rule — in the chart \
 or the data — is not present, mark it not passed rather than assuming."""
 
 
-def check_rules(image_bytes: bytes, trade: dict, strategy_name: str, rules: list, context_note: str) -> dict:
-    """Pass 2 — screenshot + parsed trade + user's rules -> per-rule verdict.
+def check_rules(images: list[bytes], trade: dict, strategy_name: str, rules: list, context_note: str) -> dict:
+    """Pass 2 — 1-3 images of the trade + parsed trade + user's rules -> per-
+    rule verdict.
 
-    Takes the screenshot (not just Pass 1's extracted fields) so chart-
-    structure rules — trendline breaks, retests, confirmation candles — can
-    actually be checked against the image instead of only the trader's note.
+    Takes the images (not just Pass 1's extracted fields) so chart-structure
+    rules — trendline breaks, retests, confirmation candles — can actually be
+    checked against the image instead of only the trader's note. See
+    VERDICT_SYSTEM for the same charting-tool-vs-broker source priority used
+    in parse_screenshot when more than one image is given.
     """
-    b64 = base64.b64encode(image_bytes).decode()
+    image_blocks = [
+        {"type": "image_url",
+         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"}}
+        for img in images
+    ]
     rules_text = "\n".join(f'- (id {r["id"]}) {r["text"]}' for r in rules)
     payload = {
         "setup": strategy_name,
@@ -186,9 +232,9 @@ def check_rules(image_bytes: bytes, trade: dict, strategy_name: str, rules: list
             {"role": "user", "content": [
                 {"type": "text",
                  "text": f"Setup: {strategy_name}\nRules:\n{rules_text}\n\n"
-                         f"Trade data + note (JSON):\n{json.dumps(payload)}"},
-                {"type": "image_url",
-                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                         f"Trade data + note (JSON):\n{json.dumps(payload)}\n\n"
+                         f"{len(images)} image(s) of this same trade follow."},
+                *image_blocks,
             ]},
         ],
     )
@@ -201,12 +247,19 @@ def check_rules(image_bytes: bytes, trade: dict, strategy_name: str, rules: list
 
 
 SUGGEST_SETUP_SYSTEM = """You are a trading-discipline analyst. You are given an \
-off-plan trade — a screenshot of the chart and the trader's own note — that \
-matched none of the trader's defined strategies. Decide honestly whether this \
-trade reflects a coherent, REPEATABLE setup (identifiable entry logic, chart \
-structure, and conditions someone could check on a future trade) or whether \
-it looks like an impulse, random, or purely discretionary entry with no \
-repeatable process.
+off-plan trade — one or more images of the trade and the trader's own note — \
+that matched none of the trader's defined strategies. Decide honestly \
+whether this trade reflects a coherent, REPEATABLE setup (identifiable entry \
+logic, chart structure, and conditions someone could check on a future \
+trade) or whether it looks like an impulse, random, or purely discretionary \
+entry with no repeatable process.
+
+If more than one image is provided, they are all of the SAME trade — a \
+charting-tool image (e.g. TradingView) for chart structure/trendlines/ \
+patterns, and possibly a broker/platform image (e.g. MT5, FundedNext) for \
+the actual execution. Base the repeatable-structure judgment mainly on the \
+charting-tool image; if you reference any specific price, prefer the \
+broker/platform image's numbers over the charting tool's.
 
 Do not default to yes. Most off-plan trades are impulse trades — say so \
 plainly when that is what the evidence shows. Only say a setup exists when \
@@ -247,11 +300,16 @@ def _normalize_setup_suggestion(parsed: dict) -> dict:
     return {"is_setup": True, "suggested_name": name, "suggested_rules": rules}
 
 
-def suggest_setup(image_bytes: bytes, context_note: str) -> dict:
-    """Off-plan-only advisory pass — screenshot + note -> either a drafted
-    repeatable-setup name/rules, or an honest "not a setup" verdict. Single-
-    trade version: this judgment isn't persisted or reused across trades."""
-    b64 = base64.b64encode(image_bytes).decode()
+def suggest_setup(images: list[bytes], context_note: str) -> dict:
+    """Off-plan-only advisory pass — 1-3 images of the trade + note -> either
+    a drafted repeatable-setup name/rules, or an honest "not a setup"
+    verdict. Single-trade version: this judgment isn't persisted or reused
+    across trades."""
+    image_blocks = [
+        {"type": "image_url",
+         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"}}
+        for img in images
+    ]
     resp = client.chat.completions.create(
         model=VISION_MODEL,
         temperature=0.2,
@@ -261,9 +319,9 @@ def suggest_setup(image_bytes: bytes, context_note: str) -> dict:
             {"role": "user", "content": [
                 {"type": "text",
                  "text": f"Trader's note about this trade: {context_note!r}. "
+                         f"{len(images)} image(s) of this same trade follow. "
                          f"Judge whether this is a repeatable setup."},
-                {"type": "image_url",
-                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                *image_blocks,
             ]},
         ],
     )

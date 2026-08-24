@@ -84,10 +84,15 @@ No test/lint/build tooling is configured yet — don't assume `pytest`, `ruff`, 
 Two independent Groq calls per trade, both forced to strict JSON (no prose, no markdown
 fences) via `_strip_to_json`:
 
-1. **Pass 1 — `parse_screenshot`** (vision model `meta-llama/llama-4-scout-17b-16e-instruct`,
-   temperature 0): screenshot + context note → structured fields only (instrument,
-   direction, prices, r_multiple, session, traded_at). Must not infer or evaluate — null
-   for anything not clearly visible.
+1. **Pass 1 — `parse_screenshot`** (vision model, temperature 0): 1-3 screenshots of the
+   same trade + context note → structured fields only (instrument, direction, prices,
+   r_multiple, session, traded_at). Must not infer or evaluate — null for anything not
+   clearly visible. When more than one image is given, `PARSE_SYSTEM` tells the model to
+   prefer numeric values (entry/exit/SL/TP/pnl_usd/stated_rr) from a broker/platform
+   screenshot (MT5, FundedNext, ...) over a charting-tool screenshot (TradingView, ...),
+   since charting tools can show planned/forecast levels rather than the real fill; the
+   same priority rule is repeated in `VERDICT_SYSTEM` and `SUGGEST_SETUP_SYSTEM` for the
+   other two passes below, which also take the same 1-3 images.
 2. **Pass 2 — `check_rules`** (text model `llama-3.3-70b-versatile`, temperature 0.2):
    parsed trade + the user's own strategy rules → per-rule pass/fail + one coach note +
    one genuine positive (or `""`). The model is never asked whether the trade was smart;
@@ -100,10 +105,12 @@ and `auth.py` both just import the constants they need from there.
 
 ### Request flow (`app/main.py`)
 
-`POST /trades` (multipart: `context_note`, optional `strategy_id`, `screenshot`;
+`POST /trades` (multipart: `context_note`, optional `strategy_id`, `screenshots` — 1 to
+`MAX_SCREENSHOTS_PER_TRADE` (3) repeated file fields, same trade from different sources
+(e.g. a charting tool for structure + the broker/platform for the real fill);
 `user_id` comes from `Depends(get_current_user_id)`, not the request):
 
-1. Read screenshot bytes, run Pass 1 (`parse_screenshot`) — this always runs, even
+1. Read the screenshot bytes, run Pass 1 (`parse_screenshot`) — this always runs, even
    off-plan, since the trade still needs structured fields.
 2. Look up `strategy_id` if given; 404 if it doesn't belong to `user_id`.
 3. Build the `Trade` row from parsed fields.
@@ -174,10 +181,11 @@ rule ("matched nothing" is stored as nothing), not an edge case to optimize away
   in the 30-day window has one — otherwise it falls back to summing `r_multiple`, same as
   before `pnl_usd` existed. `r_multiple` stays the actual discipline unit everywhere else
   (trade rows, filters); dollars are supplementary display only.
-- The "Log trade from screenshot" CTA opens the upload screen (pick/drag a screenshot,
-  optional context note, strategy picker), which POSTs multipart to `/trades` and renders
-  the judged result; tapping a trade row (or "Review & edit full trade details") opens the
-  detail/edit screen backed by `GET`/`PATCH /trades/{id}`.
+- The "Log trade from screenshot" CTA opens the upload screen (pick/drag up to 3
+  screenshots — shown as removable thumbnails, with an add tile while under the limit —
+  optional context note, strategy picker), which POSTs multipart (`screenshots`, repeated)
+  to `/trades` and renders the judged result; tapping a trade row (or "Review & edit full
+  trade details") opens the detail/edit screen backed by `GET`/`PATCH /trades/{id}`.
 - The "+" (new strategy) filter chip, and a "+ New strategy" tile plus a per-strategy edit
   (pencil) button inside the upload screen's strategy picker, all open the same
   create/edit screen: name, direction bias (long/short/both), and a rules list with

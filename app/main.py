@@ -2,8 +2,10 @@
 POST /trades — the one endpoint that is the product.
 
 Flow:
-  1. receive screenshot + context note + chosen strategy (or none)
-  2. parse the screenshot into structured fields          (ai.parse_screenshot)
+  1. receive 1-3 screenshots + context note + chosen strategy (or none) —
+     multiple images are the same trade seen from different sources (e.g. a
+     charting tool for structure, the broker/platform for the real fill)
+  2. parse the screenshots into structured fields          (ai.parse_screenshot)
   3. if a strategy was chosen: check the trade against its rules (ai.check_rules)
      if not: tag off-plan, no rule check, zero XP, and ask ai.suggest_setup
      whether it looks like a repeatable setup worth saving
@@ -285,13 +287,24 @@ def _trade_detail_out(trade: Trade, strategy_name: str | None) -> dict:
     }
 
 
+MAX_SCREENSHOTS_PER_TRADE = 3
+
+
 @app.post("/trades")
 async def log_trade(
     context_note: str = Form(""),
     strategy_id: int | None = Form(None),
-    screenshot: UploadFile = File(...),
+    screenshots: list[UploadFile] = File(...),
     user_id: int = Depends(get_current_user_id),
 ):
+    # 1-3 images of the same trade — e.g. a charting-tool screenshot (chart
+    # structure) alongside a broker/platform screenshot (actual fills). A
+    # single image still works exactly as before, just as a one-element
+    # list; see ai.py's PARSE_SYSTEM/VERDICT_SYSTEM for how multiple images
+    # are prioritized against each other.
+    if not screenshots or len(screenshots) > MAX_SCREENSHOTS_PER_TRADE:
+        raise HTTPException(400, f"Upload between 1 and {MAX_SCREENSHOTS_PER_TRADE} screenshots.")
+
     # Cost guardrail, checked before any Groq call is made (see
     # FREE_TRADES_PER_MONTH above) — never trust a frontend-side count for
     # this, since the whole point is protecting API spend.
@@ -305,11 +318,11 @@ async def log_trade(
                 ),
             }
 
-    image_bytes = await screenshot.read()
+    images = [await f.read() for f in screenshots]
 
     # Pass 1 — parse
     try:
-        parsed = ai.parse_screenshot(image_bytes, context_note)
+        parsed = ai.parse_screenshot(images, context_note)
     except ai.AIResponseError:
         raise HTTPException(502, "Couldn't read that screenshot — try again or use a clearer image.")
 
@@ -348,15 +361,15 @@ async def log_trade(
             # failure here must never block logging the off-plan trade
             # itself, so swallow it and just show no suggestion.
             try:
-                setup_suggestion = ai.suggest_setup(image_bytes, context_note)
+                setup_suggestion = ai.suggest_setup(images, context_note)
             except ai.AIResponseError:
                 setup_suggestion = None
         else:
-            # Pass 2 — verdict against the user's own rules (screenshot included
-            # so chart-structure rules can be checked against the image, not
+            # Pass 2 — verdict against the user's own rules (images included
+            # so chart-structure rules can be checked against them, not
             # just the extracted fields)
             try:
-                verdict = ai.check_rules(image_bytes, parsed, strategy.name, strategy.rules, context_note)
+                verdict = ai.check_rules(images, parsed, strategy.name, strategy.rules, context_note)
             except ai.AIResponseError:
                 raise HTTPException(502, "Couldn't check this trade against your rules — try again.")
             score = ai.score_trade(verdict)

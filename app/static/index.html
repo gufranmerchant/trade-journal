@@ -186,9 +186,9 @@
     <main class="content hidden" id="logView">
       <section class="log-form" id="logFormView">
         <div class="field-block">
-          <label class="field-label" id="screenshotLabel">Screenshot</label>
+          <label class="field-label" id="screenshotLabel">Screenshots <span class="field-optional">(up to 3)</span></label>
           <div class="dropzone" id="dropzone" role="group" aria-labelledby="screenshotLabel">
-            <input type="file" id="screenshotInput" accept="image/*" hidden>
+            <input type="file" id="screenshotInput" accept="image/*" multiple hidden>
             <div class="dropzone-empty" id="dropzoneEmpty">
               <div class="dropzone-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -196,18 +196,10 @@
                   <circle cx="12" cy="13" r="4"></circle>
                 </svg>
               </div>
-              <p class="dropzone-title">Tap to choose a screenshot</p>
-              <p class="dropzone-hint">or drag and drop</p>
+              <p class="dropzone-title">Tap to choose screenshots</p>
+              <p class="dropzone-hint">or drag and drop — up to 3, e.g. chart + broker fill</p>
             </div>
-            <div class="dropzone-preview hidden" id="dropzonePreview">
-              <img id="previewImg" alt="Trade screenshot preview">
-              <button type="button" class="dropzone-remove" id="removeScreenshotBtn" aria-label="Remove screenshot">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 6 6 18"></path>
-                  <path d="M6 6l12 12"></path>
-                </svg>
-              </button>
-            </div>
+            <div class="screenshot-thumbs hidden" id="screenshotThumbs"></div>
           </div>
         </div>
 

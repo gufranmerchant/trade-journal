@@ -22,6 +22,7 @@
     "Strategist", "Veteran", "Elite", "Master",
   ];
   const OFFPLAN_VALUE = "offplan";
+  const MAX_SCREENSHOTS = 3;
 
   const el = (id) => document.getElementById(id);
 
@@ -99,8 +100,8 @@
 
   // ---- Log-trade screen state ----
   let strategiesCache = [];
-  let selectedFile = null;
-  let previewUrl = null;
+  let selectedFiles = []; // File objects, up to MAX_SCREENSHOTS — e.g. [chart-tool screenshot, broker/platform screenshot]
+  let previewUrls = []; // object URLs, parallel to selectedFiles, revoked as entries are removed/cleared
   let selectedStrategyValue = OFFPLAN_VALUE;
   let dashboardDirty = false;
   let lastLoggedTradeId = null;
@@ -617,32 +618,77 @@
     el("logErrorBanner").classList.add("hidden");
   }
 
-  function setFile(file) {
-    if (!file || !file.type || !file.type.startsWith("image/")) {
-      showError("Please choose an image file.");
+  function renderThumbnails() {
+    const container = el("screenshotThumbs");
+    container.innerHTML = "";
+
+    selectedFiles.forEach((_, i) => {
+      const thumb = document.createElement("div");
+      thumb.className = "screenshot-thumb";
+      thumb.innerHTML = `
+        <img src="${previewUrls[i]}" alt="Screenshot ${i + 1}">
+        <button type="button" class="screenshot-thumb-remove" data-index="${i}" aria-label="Remove screenshot ${i + 1}">${iconCross}</button>
+      `;
+      thumb.querySelector(".screenshot-thumb-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFileAt(i);
+      });
+      container.appendChild(thumb);
+    });
+
+    if (selectedFiles.length < MAX_SCREENSHOTS) {
+      const addTile = document.createElement("button");
+      addTile.type = "button";
+      addTile.className = "screenshot-thumb screenshot-add-tile";
+      addTile.setAttribute("aria-label", "Add another screenshot");
+      addTile.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`;
+      addTile.addEventListener("click", () => el("screenshotInput").click());
+      container.appendChild(addTile);
+    }
+
+    const hasFiles = selectedFiles.length > 0;
+    el("dropzoneEmpty").classList.toggle("hidden", hasFiles);
+    el("screenshotThumbs").classList.toggle("hidden", !hasFiles);
+    el("submitTradeBtn").disabled = !hasFiles;
+  }
+
+  // Accepts a FileList/array from either the file input (which may return
+  // several files at once on devices that support multi-select from the
+  // camera roll) or a drag-drop — silently caps at MAX_SCREENSHOTS rather
+  // than erroring, since going over just means "the extra ones don't fit."
+  function addFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+
+    const nonImage = files.some((f) => !f.type || !f.type.startsWith("image/"));
+    if (nonImage) {
+      showError("Please choose image files.");
       return;
     }
-    selectedFile = file;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    previewUrl = URL.createObjectURL(file);
-    el("previewImg").src = previewUrl;
-    el("dropzoneEmpty").classList.add("hidden");
-    el("dropzonePreview").classList.remove("hidden");
-    el("submitTradeBtn").disabled = false;
+
+    const room = MAX_SCREENSHOTS - selectedFiles.length;
+    files.slice(0, room).forEach((file) => {
+      selectedFiles.push(file);
+      previewUrls.push(URL.createObjectURL(file));
+    });
+
+    renderThumbnails();
     hideError();
   }
 
-  function clearFile() {
-    selectedFile = null;
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      previewUrl = null;
-    }
+  function removeFileAt(index) {
+    const [url] = previewUrls.splice(index, 1);
+    if (url) URL.revokeObjectURL(url);
+    selectedFiles.splice(index, 1);
+    renderThumbnails();
+  }
+
+  function clearFiles() {
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    selectedFiles = [];
+    previewUrls = [];
     el("screenshotInput").value = "";
-    el("previewImg").src = "";
-    el("dropzoneEmpty").classList.remove("hidden");
-    el("dropzonePreview").classList.add("hidden");
-    el("submitTradeBtn").disabled = true;
+    renderThumbnails();
   }
 
   function selectStrategy(value) {
@@ -726,7 +772,7 @@
   }
 
   function resetLogForm() {
-    clearFile();
+    clearFiles();
     el("contextNote").value = "";
     hideError();
     renderStrategyPicker();
@@ -908,7 +954,7 @@
   let submittingTrade = false;
 
   async function handleSubmit() {
-    if (!selectedFile || submittingTrade) return;
+    if (selectedFiles.length === 0 || submittingTrade) return;
     submittingTrade = true;
     el("submitTradeBtn").disabled = true;
     hideError();
@@ -920,7 +966,11 @@
       if (selectedStrategyValue !== OFFPLAN_VALUE) {
         form.append("strategy_id", selectedStrategyValue);
       }
-      form.append("screenshot", selectedFile, selectedFile.name);
+      // Repeated "screenshots" fields — FastAPI collects same-name multipart
+      // file fields into a list. Order matters: it's preserved through to
+      // ai.py, which relies on it to tell the vision model which image is
+      // which when more than one is provided.
+      selectedFiles.forEach((file) => form.append("screenshots", file, file.name));
 
       const res = await authFetch("/trades", { method: "POST", body: form });
       if (!res.ok) {
@@ -960,11 +1010,10 @@
   function wireLogScreen() {
     el("dropzoneEmpty").addEventListener("click", () => el("screenshotInput").click());
     el("screenshotInput").addEventListener("change", (e) => {
-      if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
-    });
-    el("removeScreenshotBtn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      clearFile();
+      addFiles(e.target.files);
+      // Reset so picking the same file again after removing it still fires
+      // a change event (the browser dedupes identical file-input values).
+      e.target.value = "";
     });
 
     const dz = el("dropzone");
@@ -981,8 +1030,7 @@
       })
     );
     dz.addEventListener("drop", (e) => {
-      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (file) setFile(file);
+      if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
     });
 
     el("submitTradeBtn").addEventListener("click", handleSubmit);
