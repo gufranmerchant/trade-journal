@@ -1545,6 +1545,21 @@ select.text-input {
 .tool-card-chevron { color: var(--text-muted); flex-shrink: 0; }
 .tool-card-chevron svg { width: 18px; height: 18px; }
 
+.tool-card-badge {
+  align-self: flex-start;
+  background: var(--teal-tint);
+  color: var(--teal-dark);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-bottom: 2px;
+}
+
+.tool-list { display: flex; flex-direction: column; gap: 16px; }
+
 .page-lede { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 4px; }
 
 /* ---------- Ads analyser ---------- */

@@ -103,23 +103,13 @@ def _serve_static_page(filename: str) -> HTMLResponse:
 
 
 @app.get("/", include_in_schema=False)
-def serve_root():
-    # Pure redirect gateway, not the picker itself (see /tools below) — a
-    # returning visitor with a saved last-used tool goes straight there;
-    # everyone else lands on the actual tool-picker page. Splitting these
-    # was necessary because the nav switcher's "Home" link has to always
-    # reach the picker, even for a visitor who already has a tool saved —
-    # pointing "Home" at "/" made it bounce straight back to whichever tool
-    # they were already on.
+def serve_home():
+    # Always the tool-picker — no auto-redirect to the last-used tool. The
+    # picker itself (home.html) reads that same localStorage value just to
+    # move that tool's card to the front and label it "Continue where you
+    # left off"; it never navigates away on its own, so "/" (and the nav
+    # switcher's "Home" link) always reaches this page.
     return _serve_static_page("home.html")
-
-
-@app.get("/tools", include_in_schema=False)
-def serve_tools():
-    # The actual tool-picker (cards) — always shows the picker, never
-    # redirects, regardless of what's saved in localStorage. This is what
-    # the nav switcher's "Home" link points to.
-    return _serve_static_page("tools.html")
 
 
 @app.get("/trading", include_in_schema=False)
