@@ -1,5 +1,5 @@
 fastapi[standard]
-sqlalchemy
+sqlalchemy>=2.0,<2.1
 pydantic
 python-multipart
 groq
