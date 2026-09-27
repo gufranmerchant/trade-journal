@@ -1,11 +1,83 @@
 /* Shared across every top-level page (home, /trading's index.html, and each
-   /marketer/... page): "last used tool" tracking (so a returning visit to
-   "/" skips straight past the home page) and the persistent tool-switcher
-   dropdown mounted into each page's topbar. No build step, no framework —
-   plain DOM, loaded via a plain <script> tag same as app.js. */
+   /marketer/... page): "last used tool" tracking, the persistent tool-
+   switcher dropdown mounted into each page's topbar, and the light/dark
+   theme toggle — one shared preference and one shared implementation
+   (previously duplicated per page/only on Trading Mirror) so switching it
+   anywhere applies everywhere. No build step, no framework — plain DOM,
+   loaded via a plain <script> tag same as app.js. */
 
 (() => {
   "use strict";
+
+  // ---------------------------------------------------------------------
+  // Theme (light/dark) — an explicit choice (data-theme attribute) always
+  // wins; with none set, style.css's own prefers-color-scheme media query
+  // decides, so the app just follows the OS live. Every page also carries a
+  // small inline script in <head> that applies any stored choice before
+  // first paint (this file loads too late for that — avoids a flash of the
+  // wrong theme); this is the version that wires the toggle button (if the
+  // page has one — see #themeToggleBtn/#themeColorMeta) and keeps it in
+  // sync if the OS theme changes mid-session. Self-wires immediately below
+  // (no page has to call anything) so it works the same whether or not
+  // Clerk/auth is involved on that page.
+  // ---------------------------------------------------------------------
+  const THEME_KEY = "mirror_theme";
+  const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const iconSun = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
+  const iconMoon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>`;
+
+  function systemTheme() {
+    return darkMediaQuery.matches ? "dark" : "light";
+  }
+
+  function activeTheme() {
+    return document.documentElement.getAttribute("data-theme") || systemTheme();
+  }
+
+  function updateThemeToggleUI(theme) {
+    const btn = document.getElementById("themeToggleBtn");
+    if (btn) {
+      btn.innerHTML = theme === "dark" ? iconMoon : iconSun;
+      btn.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
+    }
+    const meta = document.getElementById("themeColorMeta");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#171613" : "#1D9E75");
+  }
+
+  // explicitTheme is the user's stored choice ("light"/"dark"), or null to
+  // follow the OS preference — null means "no data-theme attribute", which
+  // is exactly what lets style.css's media query take over.
+  function applyTheme(explicitTheme) {
+    if (explicitTheme) {
+      document.documentElement.setAttribute("data-theme", explicitTheme);
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    updateThemeToggleUI(explicitTheme || systemTheme());
+  }
+
+  function toggleTheme() {
+    const next = activeTheme() === "dark" ? "light" : "dark";
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    applyTheme(next);
+  }
+
+  function wireThemeToggle() {
+    let stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+    applyTheme(stored === "light" || stored === "dark" ? stored : null);
+
+    const btn = document.getElementById("themeToggleBtn");
+    if (btn) btn.addEventListener("click", toggleTheme);
+
+    darkMediaQuery.addEventListener("change", () => {
+      let current = null;
+      try { current = localStorage.getItem(THEME_KEY); } catch (e) {}
+      if (current !== "light" && current !== "dark") updateThemeToggleUI(systemTheme());
+    });
+  }
+
+  wireThemeToggle();
 
   const LAST_TOOL_KEY = "mirror_last_tool";
 

@@ -14,7 +14,7 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>KDP Break-Even Calculator — Marketer Mirror</title>
-  <meta name="theme-color" content="#1D9E75">
+  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -28,7 +28,9 @@
         </svg>
       </a>
       <span class="topbar-title">KDP Break-Even</span>
-      <div class="topbar-actions" id="topbarActions"></div>
+      <div class="topbar-actions" id="topbarActions">
+        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
+      </div>
     </header>
 
     <main class="content">
