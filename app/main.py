@@ -65,6 +65,7 @@ from app.auth import get_current_user_id
 from app.db import engine
 from app.models import User, Strategy, Trade
 from app import ai
+from app import kdp
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
 # (see app/ai.py) shows up by default under `uvicorn app.main:app` without
@@ -154,6 +155,7 @@ class StrategyCreate(BaseModel):
     name: str
     description: str | None = None
     direction_bias: str | None = None
+    type: str | None = None
     rules: list[RuleIn] = []
 
 
@@ -161,6 +163,7 @@ class StrategyUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     direction_bias: str | None = None
+    type: str | None = None
     is_active: bool | None = None
     rules: list[RuleIn] | None = None
 
@@ -194,6 +197,7 @@ def _strategy_out(strategy: Strategy) -> dict:
         "name": strategy.name,
         "description": strategy.description,
         "direction_bias": strategy.direction_bias,
+        "type": strategy.type,
         "rules": strategy.rules,
         "is_active": strategy.is_active,
         "is_example": strategy.is_example,
@@ -629,6 +633,7 @@ def create_strategy(
             name=payload.name,
             description=payload.description,
             direction_bias=payload.direction_bias,
+            type=payload.type or "trading",
             rules=_apply_rule_updates([], payload.rules),
         )
         s.add(strategy)
@@ -671,6 +676,8 @@ def update_strategy(
             strategy.description = payload.description
         if payload.direction_bias is not None:
             strategy.direction_bias = payload.direction_bias
+        if payload.type is not None:
+            strategy.type = payload.type
         if payload.is_active is not None:
             strategy.is_active = payload.is_active
         if payload.rules is not None:
@@ -679,3 +686,40 @@ def update_strategy(
         s.commit()
         s.refresh(strategy)
         return _strategy_out(strategy)
+
+
+class KdpBreakevenRequest(BaseModel):
+    format: str  # "ebook" | "paperback"
+    list_price: float
+    plan: str | None = None            # ebook only, required: "70" | "35"
+    royalty_rate: float | None = None  # paperback only, required
+    file_size_mb: float | None = None          # ebook, required when plan == "70"
+    delivery_fee_per_mb: float | None = None   # ebook, required when plan == "70"
+    printing_cost: float | None = None         # paperback only
+    vat: float = 0.0                           # ebook only
+
+
+@app.post("/tools/kdp-breakeven")
+def kdp_breakeven(payload: KdpBreakevenRequest):
+    """Stateless math, no user data involved — deliberately not behind Clerk
+    auth, unlike every other endpoint in this file."""
+    if payload.format == "ebook" and payload.plan == "70" and (
+        payload.file_size_mb is None or payload.delivery_fee_per_mb is None
+    ):
+        raise HTTPException(422, "file_size_mb and delivery_fee_per_mb are required for the 70% plan")
+    if payload.format == "paperback" and payload.printing_cost is None:
+        raise HTTPException(422, "printing_cost is required for paperback")
+
+    try:
+        return kdp.calculate_kdp_breakeven(
+            format=payload.format,
+            list_price=payload.list_price,
+            plan=payload.plan,
+            royalty_rate=payload.royalty_rate,
+            file_size_mb=payload.file_size_mb,
+            delivery_fee_per_mb=payload.delivery_fee_per_mb,
+            printing_cost=payload.printing_cost,
+            vat=payload.vat,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e))
