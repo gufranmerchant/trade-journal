@@ -66,6 +66,7 @@ from app.db import engine
 from app.models import User, Strategy, Trade
 from app import ai
 from app import kdp
+from app import ads_analyser as ads_analyser_module
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
 # (see app/ai.py) shows up by default under `uvicorn app.main:app` without
@@ -755,3 +756,22 @@ def kdp_breakeven(payload: KdpBreakevenRequest):
         )
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+@app.post("/tools/ads-analyser")
+async def ads_analyser(report: UploadFile = File(...)):
+    """Stateless CSV analysis, no user data stored — same "no Clerk auth"
+    pattern as /tools/kdp-breakeven above. Nothing here is persisted; the
+    parsed/scored rows exist only for this one response."""
+    csv_bytes = await report.read()
+    try:
+        rows = ads_analyser_module.parse_meta_ads_csv(csv_bytes)
+        rows = ads_analyser_module.compute_metrics(rows)
+        rows = ads_analyser_module.flag_rows(rows)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    return {
+        "rows": rows,
+        "flagged_count": sum(1 for r in rows if r["flags"]),
+    }
