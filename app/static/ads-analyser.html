@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("mirror_theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ads Report Analyser — Marketer Mirror</title>
+  <meta name="theme-color" content="#1D9E75">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="icon-button" href="/marketer" aria-label="Back to Marketer Mirror">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </a>
+      <span class="topbar-title">Ads Report Analyser</span>
+      <div class="topbar-actions" id="topbarActions"></div>
+    </header>
+
+    <main class="content">
+      <p class="page-lede">
+        Upload a Meta (Facebook) Ads Manager CSV export. CPA and ROAS are only
+        shown for rows that include conversion data.
+      </p>
+
+      <label class="file-drop" id="fileDrop" for="csvInput">
+        <div class="file-drop-label" id="fileDropLabel">Choose a CSV file</div>
+        <div class="file-drop-hint">Meta Ads Manager export (.csv)</div>
+        <div class="file-drop-filename hidden" id="fileDropFilename"></div>
+      </label>
+      <input type="file" id="csvInput" accept=".csv,text/csv" class="hidden">
+
+      <div class="error-banner hidden" id="errorBanner"></div>
+
+      <button class="cta-button" id="analyzeBtn" type="button" disabled>Analyze</button>
+
+      <div class="warning-banner hidden" id="summaryBanner">
+        <svg class="warning-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path>
+          <path d="M12 9v4"></path>
+          <path d="M12 17h.01"></path>
+        </svg>
+        <p id="summaryText"></p>
+      </div>
+
+      <div class="ads-table-wrap hidden" id="resultsWrap">
+        <table class="ads-table">
+          <thead>
+            <tr>
+              <th>Ad set / Campaign</th>
+              <th>Spend</th>
+              <th>Impr.</th>
+              <th>Clicks</th>
+              <th>CTR</th>
+              <th>CPC</th>
+              <th>CPA</th>
+              <th>ROAS</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/js/nav.js"></script>
+  <script>
+    MirrorNav.markLastUsed("marketer");
+    MirrorNav.mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
+  </script>
+
+  <script>
+    (() => {
+      "use strict";
+      const el = (id) => document.getElementById(id);
+
+      let selectedFile = null;
+
+      function showError(message) {
+        el("errorBanner").textContent = message;
+        el("errorBanner").classList.remove("hidden");
+      }
+      function hideError() {
+        el("errorBanner").classList.add("hidden");
+      }
+      function hideResults() {
+        el("summaryBanner").classList.add("hidden");
+        el("resultsWrap").classList.add("hidden");
+      }
+
+      const money = (n) => (n == null ? "—" : `$${n.toFixed(2)}`);
+      const pct = (n) => (n == null ? "—" : `${(n * 100).toFixed(2)}%`);
+      const times = (n) => (n == null ? "—" : `${n.toFixed(2)}x`);
+
+      // Campaign/ad set names come straight from an uploaded CSV — never
+      // trust them as HTML.
+      const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+
+      function renderResults(data) {
+        el("resultsBody").innerHTML = data.rows.map((row) => `
+          <tr class="${row.flags.length ? "flagged" : ""}">
+            <td class="ads-row-name">
+              ${escapeHtml(row.name)}
+              ${row.flags.length ? `<div class="ads-row-flags">${row.flags.map(escapeHtml).join("<br>")}</div>` : ""}
+            </td>
+            <td>${money(row.spend)}</td>
+            <td>${row.impressions.toLocaleString()}</td>
+            <td>${row.clicks.toLocaleString()}</td>
+            <td>${pct(row.ctr)}</td>
+            <td>${money(row.cpc)}</td>
+            <td>${money(row.cpa)}</td>
+            <td>${times(row.roas)}</td>
+          </tr>
+        `).join("");
+        el("resultsWrap").classList.remove("hidden");
+
+        if (data.flagged_count > 0) {
+          el("summaryText").textContent =
+            `${data.flagged_count} of ${data.rows.length} campaign${data.rows.length === 1 ? "" : "s"} flagged for review.`;
+          el("summaryBanner").classList.remove("hidden");
+        } else {
+          el("summaryBanner").classList.add("hidden");
+        }
+      }
+
+      el("csvInput").addEventListener("change", () => {
+        selectedFile = el("csvInput").files[0] || null;
+        hideError();
+        hideResults();
+        if (selectedFile) {
+          el("fileDropLabel").textContent = "Choose a different CSV file";
+          el("fileDropFilename").textContent = selectedFile.name;
+          el("fileDropFilename").classList.remove("hidden");
+        } else {
+          el("fileDropLabel").textContent = "Choose a CSV file";
+          el("fileDropFilename").classList.add("hidden");
+        }
+        el("analyzeBtn").disabled = !selectedFile;
+      });
+
+      el("analyzeBtn").addEventListener("click", async () => {
+        if (!selectedFile) return;
+        hideError();
+        hideResults();
+
+        const btn = el("analyzeBtn");
+        btn.disabled = true;
+        try {
+          const formData = new FormData();
+          formData.append("report", selectedFile);
+          const res = await fetch("/tools/ads-analyser", { method: "POST", body: formData });
+          if (!res.ok) {
+            let message = `Request failed (${res.status})`;
+            try {
+              const body = await res.json();
+              if (body && body.detail) message = body.detail;
+            } catch (_) {}
+            throw new Error(message);
+          }
+          renderResults(await res.json());
+        } catch (err) {
+          showError(err.message || "Couldn't analyze that file — try again.");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
