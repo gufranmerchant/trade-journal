@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("mirror_theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>KDP Break-Even Calculator — Marketer Mirror</title>
+  <meta name="theme-color" content="#1D9E75">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="icon-button" href="/" aria-label="Back to Mirror">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </a>
+      <span class="topbar-title">KDP Break-Even</span>
+      <span class="topbar-spacer" aria-hidden="true"></span>
+    </header>
+
+    <main class="content">
+      <div class="field-block">
+        <label class="field-label">Format</label>
+        <div class="segmented" id="formatToggle" role="group" aria-label="Format">
+          <button type="button" class="segment-btn active" data-value="ebook">Ebook</button>
+          <button type="button" class="segment-btn" data-value="paperback">Paperback</button>
+        </div>
+      </div>
+
+      <div class="field-block">
+        <label class="field-label" for="listPrice">List price ($)</label>
+        <input class="text-input" type="number" id="listPrice" step="0.01" min="0" placeholder="6.99">
+      </div>
+
+      <div id="ebookFields">
+        <div class="field-block">
+          <label class="field-label">Royalty plan</label>
+          <div class="segmented" id="planToggle" role="group" aria-label="Royalty plan">
+            <button type="button" class="segment-btn active" data-value="70">70%</button>
+            <button type="button" class="segment-btn" data-value="35">35%</button>
+          </div>
+        </div>
+
+        <div id="deliveryFields">
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label" for="fileSize">File size (MB)</label>
+              <input class="text-input" type="number" id="fileSize" step="0.1" min="0" placeholder="1.7">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="deliveryFee">Delivery fee ($/MB)</label>
+              <input class="text-input" type="number" id="deliveryFee" step="0.01" min="0" placeholder="0.15">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="paperbackFields" class="hidden">
+        <div class="field-grid">
+          <div class="field-block">
+            <label class="field-label" for="royaltyRate">Royalty rate (%)</label>
+            <input class="text-input" type="number" id="royaltyRate" step="1" min="0" max="100" placeholder="60">
+          </div>
+          <div class="field-block">
+            <label class="field-label" for="printingCost">Printing cost ($)</label>
+            <input class="text-input" type="number" id="printingCost" step="0.01" min="0" placeholder="2.30">
+          </div>
+        </div>
+      </div>
+
+      <div class="error-banner hidden" id="errorBanner"></div>
+
+      <button class="cta-button" id="calcBtn" type="button">Calculate</button>
+
+      <div class="fact-grid hidden" id="resultCard">
+        <div class="fact-item">
+          <span class="fact-label">Royalty per sale</span>
+          <span class="fact-value" id="resultRoyalty">—</span>
+        </div>
+        <div class="fact-item">
+          <span class="fact-label">Break-even ACOS</span>
+          <span class="fact-value" id="resultAcos">—</span>
+        </div>
+        <div class="fact-item">
+          <span class="fact-label">Max CPC @ 5% conv.</span>
+          <span class="fact-value" id="resultCpc5">—</span>
+        </div>
+        <div class="fact-item">
+          <span class="fact-label">Max CPC @ 10% conv.</span>
+          <span class="fact-value" id="resultCpc10">—</span>
+        </div>
+        <div class="fact-item">
+          <span class="fact-label">Max CPC @ 15% conv.</span>
+          <span class="fact-value" id="resultCpc15">—</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+      const el = (id) => document.getElementById(id);
+
+      let format = "ebook";
+      let plan = "70";
+
+      function selectFormat(value) {
+        format = value;
+        el("formatToggle").querySelectorAll(".segment-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.value === value);
+        });
+        el("ebookFields").classList.toggle("hidden", value !== "ebook");
+        el("paperbackFields").classList.toggle("hidden", value !== "paperback");
+        hideError();
+        hideResult();
+      }
+
+      function selectPlan(value) {
+        plan = value;
+        el("planToggle").querySelectorAll(".segment-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.value === value);
+        });
+        el("deliveryFields").classList.toggle("hidden", value !== "70");
+      }
+
+      function showError(message) {
+        el("errorBanner").textContent = message;
+        el("errorBanner").classList.remove("hidden");
+      }
+
+      function hideError() {
+        el("errorBanner").classList.add("hidden");
+      }
+
+      function hideResult() {
+        el("resultCard").classList.add("hidden");
+      }
+
+      function renderResult(result) {
+        el("resultRoyalty").textContent = `$${result.royalty_per_sale.toFixed(2)}`;
+        el("resultAcos").textContent = `${(result.breakeven_acos * 100).toFixed(0)}%`;
+        el("resultCpc5").textContent = `$${result.max_cpc_5pct.toFixed(2)}`;
+        el("resultCpc10").textContent = `$${result.max_cpc_10pct.toFixed(2)}`;
+        el("resultCpc15").textContent = `$${result.max_cpc_15pct.toFixed(2)}`;
+        el("resultCard").classList.remove("hidden");
+      }
+
+      async function calculate() {
+        hideError();
+        hideResult();
+
+        const listPrice = parseFloat(el("listPrice").value);
+        if (!listPrice || listPrice <= 0) {
+          showError("Enter a list price.");
+          return;
+        }
+
+        const payload = { format, list_price: listPrice };
+        if (format === "ebook") {
+          payload.plan = plan;
+          if (plan === "70") {
+            const fileSize = parseFloat(el("fileSize").value);
+            const deliveryFee = parseFloat(el("deliveryFee").value);
+            if (!fileSize || isNaN(deliveryFee)) {
+              showError("Enter file size and delivery fee per MB.");
+              return;
+            }
+            payload.file_size_mb = fileSize;
+            payload.delivery_fee_per_mb = deliveryFee;
+          }
+        } else {
+          const ratePercent = parseFloat(el("royaltyRate").value);
+          const printingCost = parseFloat(el("printingCost").value);
+          if (!ratePercent || isNaN(printingCost)) {
+            showError("Enter royalty rate and printing cost.");
+            return;
+          }
+          payload.royalty_rate = ratePercent / 100;
+          payload.printing_cost = printingCost;
+        }
+
+        const btn = el("calcBtn");
+        btn.disabled = true;
+        try {
+          const res = await fetch("/tools/kdp-breakeven", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            let message = `Request failed (${res.status})`;
+            try {
+              const body = await res.json();
+              if (body && body.detail) message = body.detail;
+            } catch (_) {}
+            throw new Error(message);
+          }
+          renderResult(await res.json());
+        } catch (err) {
+          showError(err.message || "Couldn't calculate — try again.");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      el("formatToggle").querySelectorAll(".segment-btn").forEach((btn) => {
+        btn.addEventListener("click", () => selectFormat(btn.dataset.value));
+      });
+      el("planToggle").querySelectorAll(".segment-btn").forEach((btn) => {
+        btn.addEventListener("click", () => selectPlan(btn.dataset.value));
+      });
+      el("calcBtn").addEventListener("click", calculate);
+    })();
+  </script>
+</body>
+</html>

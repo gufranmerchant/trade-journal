@@ -60,6 +60,7 @@ class Strategy(Base):
     description = Column(Text)                       # one-line summary
     rules = Column(JSON, nullable=False, default=list)  # list[{id, text}]
     direction_bias = Column(String)                 # "long" | "short" | "both"
+    type = Column(String, nullable=False, default="trading")  # "trading" | "ads" | "content"
     is_active = Column(Boolean, default=True)
     # True only for the one demo strategy auto-seeded for a brand-new user
     # with zero strategies of their own (see _seed_example_strategy_if_needed
