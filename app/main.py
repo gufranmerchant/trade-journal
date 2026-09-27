@@ -97,9 +97,19 @@ def _bust_cache(html: str) -> str:
     return _STATIC_ASSET_RE.sub(rf"\g<1>\g<2>?v={STATIC_VERSION}\g<3>", html)
 
 
+# The earlier ?v=... busting above only covers the *linked* static assets
+# (css/js/icons) — the page shell itself (this HTML response) was still
+# fair game for a browser to cache with no validator, so a stale tab or a
+# heuristically-cached page load could keep rendering old copy/markup
+# indefinitely even after a deploy shipped new HTML. These pages are cheap
+# to regenerate (a file read + one regex pass) and never benefit from being
+# cached, so just tell the browser not to.
+_NO_STORE_HEADERS = {"Cache-Control": "no-store"}
+
+
 def _serve_static_page(filename: str) -> HTMLResponse:
     html = (STATIC_DIR / filename).read_text(encoding="utf-8")
-    return HTMLResponse(_bust_cache(html))
+    return HTMLResponse(_bust_cache(html), headers=_NO_STORE_HEADERS)
 
 
 @app.get("/", include_in_schema=False)
@@ -122,7 +132,7 @@ def serve_trading():
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace("{{CLERK_PUBLISHABLE_KEY}}", config.CLERK_PUBLISHABLE_KEY)
     html = html.replace("{{CLERK_FRONTEND_API}}", config.CLERK_FRONTEND_API)
-    return HTMLResponse(_bust_cache(html))
+    return HTMLResponse(_bust_cache(html), headers=_NO_STORE_HEADERS)
 
 
 @app.get("/marketer", include_in_schema=False)
