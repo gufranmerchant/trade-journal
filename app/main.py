@@ -82,16 +82,48 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+def _serve_static_page(filename: str) -> HTMLResponse:
+    return HTMLResponse((STATIC_DIR / filename).read_text(encoding="utf-8"))
+
+
 @app.get("/", include_in_schema=False)
-def serve_frontend():
+def serve_home():
+    # Tool-picker home page. home.html itself carries the last-used-tool
+    # redirect (see app/static/js/nav.js) — a returning visitor never
+    # actually sees these cards render, they're just the fallback for a
+    # first-time or cleared-storage visit.
+    return _serve_static_page("home.html")
+
+
+@app.get("/trading", include_in_schema=False)
+def serve_trading():
     # index.html carries {{CLERK_PUBLISHABLE_KEY}}/{{CLERK_FRONTEND_API}}
     # tokens (not a hardcoded key/host) so a Clerk dev->prod instance switch
     # takes effect on next request instead of needing a rebuild of a static
-    # file — see app/config.py's _clerk_frontend_api.
+    # file — see app/config.py's _clerk_frontend_api. This used to be served
+    # at "/" — that root path is now the tool-picker home page above.
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace("{{CLERK_PUBLISHABLE_KEY}}", config.CLERK_PUBLISHABLE_KEY)
     html = html.replace("{{CLERK_FRONTEND_API}}", config.CLERK_FRONTEND_API)
     return HTMLResponse(html)
+
+
+@app.get("/marketer", include_in_schema=False)
+def serve_marketer():
+    return _serve_static_page("marketer.html")
+
+
+@app.get("/marketer/kdp-breakeven", include_in_schema=False)
+def serve_kdp_breakeven():
+    # Same file StaticFiles already serves at /static/kdp-breakeven.html —
+    # that old path is left in place (nothing ever moved or was deleted) so
+    # any link to it from before this page had a real route keeps working.
+    return _serve_static_page("kdp-breakeven.html")
+
+
+@app.get("/marketer/ads-analyser", include_in_schema=False)
+def serve_ads_analyser():
+    return _serve_static_page("ads-analyser.html")
 
 # Rolling window for the discipline score, flat v1 like ai.XP_PER_RULE.
 DISCIPLINE_WINDOW = 20

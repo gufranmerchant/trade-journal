@@ -58,7 +58,7 @@
         <span class="brand-dot"></span>
         <span class="brand-name">Mirror</span>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" id="homeTopbarActions">
         <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
         <button class="icon-button" id="signOutBtn" type="button" aria-label="Sign out">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -79,7 +79,7 @@
         </svg>
       </button>
       <span class="topbar-title">Log Trade</span>
-      <span class="topbar-spacer" aria-hidden="true"></span>
+      <div class="topbar-actions" id="logTopbarActions"></div>
     </header>
 
     <header class="topbar hidden" id="detailTopbar">
@@ -90,15 +90,17 @@
         </svg>
       </button>
       <span class="topbar-title" id="detailTopbarTitle">Trade</span>
-      <button class="icon-button icon-button-danger" id="deleteTradeBtn" type="button" aria-label="Delete trade">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"></path>
-          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-          <path d="M10 11v6"></path>
-          <path d="M14 11v6"></path>
-        </svg>
-      </button>
+      <div class="topbar-actions" id="detailTopbarActions">
+        <button class="icon-button icon-button-danger" id="deleteTradeBtn" type="button" aria-label="Delete trade">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path>
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <header class="topbar hidden" id="strategyTopbar">
@@ -109,7 +111,7 @@
         </svg>
       </button>
       <span class="topbar-title" id="strategyTopbarTitle">New Strategy</span>
-      <span class="topbar-spacer" aria-hidden="true"></span>
+      <div class="topbar-actions" id="strategyTopbarActions"></div>
     </header>
 
     <header class="topbar hidden" id="manageTopbar">
@@ -120,7 +122,7 @@
         </svg>
       </button>
       <span class="topbar-title">Manage Strategies</span>
-      <span class="topbar-spacer" aria-hidden="true"></span>
+      <div class="topbar-actions" id="manageTopbarActions"></div>
     </header>
 
     <header class="topbar hidden" id="strategyDetailTopbar">
@@ -131,7 +133,7 @@
         </svg>
       </button>
       <span class="topbar-title" id="strategyDetailTopbarTitle">Strategy</span>
-      <span class="topbar-spacer" aria-hidden="true"></span>
+      <div class="topbar-actions" id="strategyDetailTopbarActions"></div>
     </header>
 
     <main class="content hidden" id="homeView">
@@ -539,6 +541,7 @@
     </div>
   </div>
 
+  <script src="/static/js/nav.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

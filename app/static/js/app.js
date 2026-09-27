@@ -1891,7 +1891,18 @@
     });
   }
 
+  // Nav switcher (see app/static/js/nav.js) is independent of Clerk/auth
+  // state — mounted once, up front, into every topbar's actions container.
+  function wireNavSwitchers() {
+    MirrorNav.markLastUsed("trading");
+    [
+      "homeTopbarActions", "logTopbarActions", "detailTopbarActions",
+      "strategyTopbarActions", "manageTopbarActions", "strategyDetailTopbarActions",
+    ].forEach((id) => MirrorNav.mountSwitcher(el(id), { active: "trading" }));
+  }
+
   async function boot() {
+    wireNavSwitchers();
     showView("authLoading");
     try {
       clerk = await waitForClerkScript();

@@ -1481,3 +1481,68 @@ select.text-input {
   .app { padding-top: 12px; }
   .content { padding: 12px 20px 32px; }
 }
+
+/* ---------- Tool nav switcher (app/static/js/nav.js) ---------- */
+.nav-switcher { position: relative; }
+
+.nav-switcher-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  padding: 6px;
+  z-index: 50;
+  border: 1px solid var(--card-border);
+}
+
+.nav-switcher-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.nav-switcher-link:hover { background: var(--teal-tint-hover); }
+.nav-switcher-link.active { color: var(--teal-dark); background: var(--teal-tint); }
+.nav-switcher-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* ---------- Tool home / marketer hub cards ---------- */
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--card-border);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.tool-card:hover { border-color: var(--card-border-hover); }
+
+.tool-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--teal-tint);
+  color: var(--teal-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tool-card-icon.purple { background: var(--purple-tint); color: var(--purple); }
+.tool-card-icon svg { width: 22px; height: 22px; }
+
+.tool-card-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.tool-card-name { font-size: 16px; font-weight: 800; color: var(--text-primary); }
+.tool-card-desc { font-size: 13px; color: var(--text-muted); }
+
+.tool-card-chevron { color: var(--text-muted); flex-shrink: 0; }
+.tool-card-chevron svg { width: 18px; height: 18px; }
+
+.page-lede { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 4px; }
