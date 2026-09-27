@@ -46,7 +46,7 @@
     const menu = document.createElement("div");
     menu.className = "card nav-switcher-menu hidden";
     menu.innerHTML =
-      `<a class="nav-switcher-link${active === null ? " active" : ""}" href="/">${iconHome}Home</a>` +
+      `<a class="nav-switcher-link${active === null ? " active" : ""}" href="/tools">${iconHome}Home</a>` +
       `<a class="nav-switcher-link${active === "trading" ? " active" : ""}" href="/trading">${iconTrading}Trading Mirror</a>` +
       `<a class="nav-switcher-link${active === "marketer" ? " active" : ""}" href="/marketer">${iconMarketer}Marketer Mirror</a>`;
 

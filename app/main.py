@@ -51,6 +51,8 @@ below always comes from the verified token, never from the client.
 """
 
 import logging
+import re
+import time
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends
@@ -82,18 +84,42 @@ app = FastAPI(title="Mirror")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# Cache-busting: every /static/... reference in a served page gets ?v=... appended
+# (see _bust_cache below) so a deploy can't leave a browser rendering new HTML
+# against an old cached style.css/app.js/nav.js. Computed once per process, not
+# per request — a new process (i.e. a new deploy, or a local --reload restart)
+# gets a new value automatically; nothing to hand-bump per release.
+STATIC_VERSION = str(int(time.time()))
+_STATIC_ASSET_RE = re.compile(r'((?:src|href)=")(/static/[^"]+)(")')
+
+
+def _bust_cache(html: str) -> str:
+    return _STATIC_ASSET_RE.sub(rf"\g<1>\g<2>?v={STATIC_VERSION}\g<3>", html)
+
 
 def _serve_static_page(filename: str) -> HTMLResponse:
-    return HTMLResponse((STATIC_DIR / filename).read_text(encoding="utf-8"))
+    html = (STATIC_DIR / filename).read_text(encoding="utf-8")
+    return HTMLResponse(_bust_cache(html))
 
 
 @app.get("/", include_in_schema=False)
-def serve_home():
-    # Tool-picker home page. home.html itself carries the last-used-tool
-    # redirect (see app/static/js/nav.js) — a returning visitor never
-    # actually sees these cards render, they're just the fallback for a
-    # first-time or cleared-storage visit.
+def serve_root():
+    # Pure redirect gateway, not the picker itself (see /tools below) — a
+    # returning visitor with a saved last-used tool goes straight there;
+    # everyone else lands on the actual tool-picker page. Splitting these
+    # was necessary because the nav switcher's "Home" link has to always
+    # reach the picker, even for a visitor who already has a tool saved —
+    # pointing "Home" at "/" made it bounce straight back to whichever tool
+    # they were already on.
     return _serve_static_page("home.html")
+
+
+@app.get("/tools", include_in_schema=False)
+def serve_tools():
+    # The actual tool-picker (cards) — always shows the picker, never
+    # redirects, regardless of what's saved in localStorage. This is what
+    # the nav switcher's "Home" link points to.
+    return _serve_static_page("tools.html")
 
 
 @app.get("/trading", include_in_schema=False)
@@ -102,11 +128,11 @@ def serve_trading():
     # tokens (not a hardcoded key/host) so a Clerk dev->prod instance switch
     # takes effect on next request instead of needing a rebuild of a static
     # file — see app/config.py's _clerk_frontend_api. This used to be served
-    # at "/" — that root path is now the tool-picker home page above.
+    # at "/" — that root path is now the redirect gateway above.
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace("{{CLERK_PUBLISHABLE_KEY}}", config.CLERK_PUBLISHABLE_KEY)
     html = html.replace("{{CLERK_FRONTEND_API}}", config.CLERK_FRONTEND_API)
-    return HTMLResponse(html)
+    return HTMLResponse(_bust_cache(html))
 
 
 @app.get("/marketer", include_in_schema=False)

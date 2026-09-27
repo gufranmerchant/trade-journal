@@ -3,20 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <script>
-    // Returning-visitor redirect: fires before anything else so there's no
-    // flash of the home page for someone who already has a tool preference
-    // (see app/static/js/nav.js, MirrorNav.markLastUsed — set by each tool
-    // page on load). No stored value yet (first visit, or storage cleared)
-    // just falls through to the cards below.
+    // Redirect gateway only — not the picker itself (see /tools, served by
+    // app/static/tools.html). A visitor with a saved tool preference (see
+    // app/static/js/nav.js, MirrorNav.markLastUsed) goes straight there;
+    // everyone else falls through to the actual picker at /tools. This
+    // split exists so the nav switcher's "Home" link always reaches the
+    // picker even for a visitor who already has a tool saved — it used to
+    // point at "/" directly, which just bounced them straight back.
     (function () {
+      var target = "/tools";
       try {
         var lastTool = localStorage.getItem("mirror_last_tool");
         if (lastTool === "trading") {
-          location.replace("/trading");
+          target = "/trading";
         } else if (lastTool === "marketer") {
-          location.replace("/marketer");
+          target = "/marketer";
         }
       } catch (e) {}
+      location.replace(target);
     })();
     (function () {
       try {
@@ -35,42 +39,10 @@
 </head>
 <body>
   <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-dot"></span>
-        <span class="brand-name">Mirror</span>
-      </div>
-      <span class="topbar-spacer" aria-hidden="true"></span>
-    </header>
-
     <main class="content">
-      <p class="page-lede">Pick a tool to get started.</p>
-
-      <a class="card tool-card" href="/trading">
-        <span class="tool-card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-        </span>
-        <span class="tool-card-body">
-          <span class="tool-card-name">Trading Mirror</span>
-          <span class="tool-card-desc">Log trades from a screenshot and get judged against your own strategy rules.</span>
-        </span>
-        <span class="tool-card-chevron">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-        </span>
-      </a>
-
-      <a class="card tool-card" href="/marketer">
-        <span class="tool-card-icon purple">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-        </span>
-        <span class="tool-card-body">
-          <span class="tool-card-name">Marketer Mirror</span>
-          <span class="tool-card-desc">KDP break-even math and an ads report analyser.</span>
-        </span>
-        <span class="tool-card-chevron">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-        </span>
-      </a>
+      <div class="loading-state" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+      </div>
     </main>
   </div>
 </body>
