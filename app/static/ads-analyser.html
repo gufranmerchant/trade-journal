@@ -35,13 +35,14 @@
 
     <main class="content">
       <p class="page-lede">
-        Upload a Meta (Facebook) Ads Manager CSV export. CPA and ROAS are only
-        shown for rows that include conversion data.
+        Upload a Meta (Facebook) Ads Manager or Amazon Ads (Sponsored Products)
+        CSV export — the platform is detected automatically. CPA and ROAS/ACOS
+        are only shown for rows that include conversion data.
       </p>
 
       <label class="file-drop" id="fileDrop" for="csvInput">
         <div class="file-drop-label" id="fileDropLabel">Choose a CSV file</div>
-        <div class="file-drop-hint">Meta Ads Manager export (.csv)</div>
+        <div class="file-drop-hint">Meta Ads Manager or Amazon Ads export (.csv)</div>
         <div class="file-drop-filename hidden" id="fileDropFilename"></div>
       </label>
       <input type="file" id="csvInput" accept=".csv,text/csv" class="hidden">
@@ -70,7 +71,7 @@
               <th>CTR</th>
               <th>CPC</th>
               <th>CPA</th>
-              <th>ROAS</th>
+              <th>ROAS / ACOS</th>
             </tr>
           </thead>
           <tbody id="resultsBody"></tbody>
@@ -108,6 +109,12 @@
       const pct = (n) => (n == null ? "—" : `${(n * 100).toFixed(2)}%`);
       const times = (n) => (n == null ? "—" : `${n.toFixed(2)}x`);
 
+      // Amazon rows report ACOS natively (spend as a % of sales — lower is
+      // better); Meta rows get ROAS computed from revenue/spend (a
+      // multiplier — higher is better). Same underlying economics, inverse
+      // framing, so a row only ever has one of the two.
+      const roasOrAcos = (row) => (row.acos != null ? `${(row.acos * 100).toFixed(2)}% ACOS` : times(row.roas));
+
       // Campaign/ad set names come straight from an uploaded CSV — never
       // trust them as HTML.
       const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
@@ -127,7 +134,7 @@
             <td>${pct(row.ctr)}</td>
             <td>${money(row.cpc)}</td>
             <td>${money(row.cpa)}</td>
-            <td>${times(row.roas)}</td>
+            <td>${roasOrAcos(row)}</td>
           </tr>
         `).join("");
         el("resultsWrap").classList.remove("hidden");

@@ -781,7 +781,7 @@ async def ads_analyser(report: UploadFile = File(...)):
     parsed/scored rows exist only for this one response."""
     csv_bytes = await report.read()
     try:
-        rows = ads_analyser_module.parse_meta_ads_csv(csv_bytes)
+        rows = ads_analyser_module.parse_ads_csv(csv_bytes)
         rows = ads_analyser_module.compute_metrics(rows)
         rows = ads_analyser_module.flag_rows(rows)
     except ValueError as e:
