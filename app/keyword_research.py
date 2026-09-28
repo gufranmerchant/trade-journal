@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 client = Groq(api_key=GROQ_API_KEY)
 
-MODEL = "qwen/qwen3.6-27b"  # same model app/ai.py uses for its own Groq calls
+MODEL = "qwen/qwen3.8-27b"  # verified via client.models.list() against the real Groq account
 
 MAX_TOPIC_LENGTH = 300
 
