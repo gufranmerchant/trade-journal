@@ -418,6 +418,13 @@ button {
   font-weight: 700;
 }
 
+/* Non-interactive chips (e.g. keyword-research's competitor/category
+   suggestions) — same pill look, no hover/pointer affordance since there's
+   nothing to click. */
+.chip-static-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip.chip-static { cursor: default; }
+.chip.chip-static:hover { border-color: var(--card-border); }
+
 /* ---------- Trade list toolbar (select mode) ---------- */
 .list-toolbar {
   display: flex;

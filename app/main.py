@@ -55,7 +55,7 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -69,6 +69,8 @@ from app.models import User, Strategy, Trade
 from app import ai
 from app import kdp
 from app import ads_analyser as ads_analyser_module
+from app import keyword_research as keyword_research_module
+from app.rate_limit import RateLimiter
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
 # (see app/ai.py) shows up by default under `uvicorn app.main:app` without
@@ -163,6 +165,11 @@ def serve_kdp_breakeven():
 @app.get("/marketer/books/ads-analyser", include_in_schema=False)
 def serve_ads_analyser():
     return _serve_static_page("ads-analyser.html")
+
+
+@app.get("/marketer/books/keyword-research", include_in_schema=False)
+def serve_keyword_research():
+    return _serve_static_page("keyword-research.html")
 
 
 @app.get("/marketer/kdp-breakeven", include_in_schema=False)
@@ -825,3 +832,47 @@ async def ads_analyser(report: UploadFile = File(...)):
         "rows": rows,
         "flagged_count": sum(1 for r in rows if r["flags"]),
     }
+
+
+# Cost guardrail for /tools/keyword-research: unlike the two tools above,
+# this one makes a real Groq call per request. There's no logged-in user to
+# cap per-account the way FREE_TRADES_PER_MONTH does, so it's capped per-IP
+# instead — change this one value to adjust the cap.
+KEYWORD_RESEARCH_LIMIT_PER_HOUR = 5
+_keyword_research_limiter = RateLimiter(limit=KEYWORD_RESEARCH_LIMIT_PER_HOUR, window_seconds=3600)
+
+
+def _client_ip(request: Request) -> str:
+    # Railway (and most PaaS hosts) terminate TLS at a proxy, so the real
+    # client address arrives via X-Forwarded-For, not request.client — that
+    # would otherwise always resolve to the proxy's own address and let one
+    # cap apply across every visitor.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+class KeywordResearchRequest(BaseModel):
+    topic: str
+
+
+@app.post("/tools/keyword-research")
+def keyword_research(payload: KeywordResearchRequest, request: Request):
+    """Stateless, no Clerk auth — same pattern as /tools/kdp-breakeven and
+    /tools/ads-analyser above. The rate limit is checked BEFORE the Groq
+    call runs, since the whole point is protecting API spend, not just
+    shaping the response."""
+    if not _keyword_research_limiter.allow(_client_ip(request)):
+        raise HTTPException(
+            429,
+            f"You've hit the limit of {KEYWORD_RESEARCH_LIMIT_PER_HOUR} requests per hour "
+            "for this tool — try again later.",
+        )
+
+    try:
+        return keyword_research_module.research_keywords(payload.topic)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except keyword_research_module.KeywordResearchError:
+        raise HTTPException(502, "Couldn't generate suggestions — try again.")

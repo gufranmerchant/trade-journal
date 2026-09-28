@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("mirror_theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Keyword & Category Research — Marketer Mirror</title>
+  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="icon-button" href="/marketer/books" aria-label="Back to Books">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </a>
+      <span class="topbar-title">Keyword & Category Research</span>
+      <div class="topbar-actions" id="topbarActions">
+        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
+      </div>
+    </header>
+
+    <main class="content">
+      <p class="page-lede">
+        Enter a book topic or working title to get suggested Amazon search
+        keywords, likely competitors, and browse categories. These are LLM
+        suggestions to start your research from, not scraped Amazon data —
+        verify anything you act on.
+      </p>
+
+      <div class="field-block">
+        <label class="field-label" for="topicInput">Book topic or title</label>
+        <input class="text-input" type="text" id="topicInput" maxlength="300"
+               placeholder="e.g. a cozy mystery set in a small-town bakery">
+      </div>
+
+      <div class="error-banner hidden" id="errorBanner"></div>
+
+      <button class="cta-button" id="researchBtn" type="button">Research</button>
+
+      <div class="loading-state hidden" id="loadingView" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="loading-title">Researching…</p>
+      </div>
+
+      <div class="hidden" id="resultsWrap">
+        <div class="section-label">Suggested keywords</div>
+        <div class="rule-list" id="keywordList"></div>
+
+        <div class="section-label">Likely competitors</div>
+        <div class="chip-static-list" id="competitorList"></div>
+
+        <div class="section-label">Suggested categories</div>
+        <div class="chip-static-list" id="categoryList"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/js/nav.js"></script>
+  <script>
+    MirrorNav.markLastUsed("marketer");
+    MirrorNav.mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
+  </script>
+
+  <script>
+    (() => {
+      "use strict";
+      const el = (id) => document.getElementById(id);
+
+      // User-typed topic and model-generated keyword/reason/competitor/
+      // category text all go through this before hitting innerHTML.
+      const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+
+      function showError(message) {
+        el("errorBanner").textContent = message;
+        el("errorBanner").classList.remove("hidden");
+      }
+      function hideError() {
+        el("errorBanner").classList.add("hidden");
+      }
+      function hideResults() {
+        el("resultsWrap").classList.add("hidden");
+      }
+
+      function renderResults(data) {
+        el("keywordList").innerHTML = (data.keywords || []).map((k) => `
+          <div class="rule-tile neutral">
+            <div class="rule-tile-text">
+              ${escapeHtml(k.keyword)}
+              ${k.reason ? `<div class="section-hint">${escapeHtml(k.reason)}</div>` : ""}
+            </div>
+          </div>
+        `).join("") || `<p class="section-hint">No keywords suggested.</p>`;
+
+        const chips = (items) => items.map((s) => `<span class="chip chip-static">${escapeHtml(s)}</span>`).join("")
+          || `<p class="section-hint">None suggested.</p>`;
+        el("competitorList").innerHTML = chips(data.competitors || []);
+        el("categoryList").innerHTML = chips(data.categories || []);
+
+        el("resultsWrap").classList.remove("hidden");
+      }
+
+      async function research() {
+        const topic = el("topicInput").value.trim();
+        if (!topic) {
+          showError("Enter a book topic or title.");
+          return;
+        }
+
+        hideError();
+        hideResults();
+        const btn = el("researchBtn");
+        btn.disabled = true;
+        el("loadingView").classList.remove("hidden");
+
+        try {
+          const res = await fetch("/tools/keyword-research", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic }),
+          });
+          if (!res.ok) {
+            let message = `Request failed (${res.status})`;
+            try {
+              const body = await res.json();
+              if (body && body.detail) message = body.detail;
+            } catch (_) {}
+            throw new Error(message);
+          }
+          renderResults(await res.json());
+        } catch (err) {
+          showError(err.message || "Couldn't research that topic — try again.");
+        } finally {
+          btn.disabled = false;
+          el("loadingView").classList.add("hidden");
+        }
+      }
+
+      el("researchBtn").addEventListener("click", research);
+      el("topicInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") research();
+      });
+    })();
+  </script>
+</body>
+</html>
