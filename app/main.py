@@ -56,7 +56,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -137,10 +137,22 @@ def serve_trading():
 
 @app.get("/marketer", include_in_schema=False)
 def serve_marketer():
+    # Lane picker (Books vs Social), same visual pattern as home.html's
+    # top-level tool picker — not a hub of tools itself anymore.
     return _serve_static_page("marketer.html")
 
 
-@app.get("/marketer/kdp-breakeven", include_in_schema=False)
+@app.get("/marketer/books", include_in_schema=False)
+def serve_marketer_books():
+    return _serve_static_page("marketer-books.html")
+
+
+@app.get("/marketer/social", include_in_schema=False)
+def serve_marketer_social():
+    return _serve_static_page("marketer-social.html")
+
+
+@app.get("/marketer/books/kdp-breakeven", include_in_schema=False)
 def serve_kdp_breakeven():
     # Same file StaticFiles already serves at /static/kdp-breakeven.html —
     # that old path is left in place (nothing ever moved or was deleted) so
@@ -148,9 +160,21 @@ def serve_kdp_breakeven():
     return _serve_static_page("kdp-breakeven.html")
 
 
-@app.get("/marketer/ads-analyser", include_in_schema=False)
+@app.get("/marketer/books/ads-analyser", include_in_schema=False)
 def serve_ads_analyser():
     return _serve_static_page("ads-analyser.html")
+
+
+@app.get("/marketer/kdp-breakeven", include_in_schema=False)
+def redirect_old_kdp_breakeven():
+    # This tool moved under the new Books lane (see /marketer/books above) —
+    # redirect rather than delete so nothing bookmarked at the old path breaks.
+    return RedirectResponse("/marketer/books/kdp-breakeven", status_code=301)
+
+
+@app.get("/marketer/ads-analyser", include_in_schema=False)
+def redirect_old_ads_analyser():
+    return RedirectResponse("/marketer/books/ads-analyser", status_code=301)
 
 # Rolling window for the discipline score, flat v1 like ai.XP_PER_RULE.
 DISCIPLINE_WINDOW = 20
