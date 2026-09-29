@@ -874,5 +874,8 @@ def keyword_research(payload: KeywordResearchRequest, request: Request):
         return keyword_research_module.research_keywords(payload.topic)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    except keyword_research_module.KeywordResearchError:
-        raise HTTPException(502, "Couldn't generate suggestions — try again.")
+    except keyword_research_module.KeywordResearchError as e:
+        # str(e) is always keyword_research.FRIENDLY_ERROR_MESSAGE — the
+        # technical reason (bad JSON, Groq API failure, ...) is logged
+        # server-side by research_keywords itself, not shown to the user.
+        raise HTTPException(502, str(e))

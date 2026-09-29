@@ -16,7 +16,7 @@ import json
 import logging
 import re
 
-from groq import Groq
+from groq import APIError, Groq
 
 from app.config import GROQ_API_KEY
 
@@ -28,23 +28,39 @@ MODEL = "qwen/qwen3.8-27b"  # verified via client.models.list() against the real
 
 MAX_TOPIC_LENGTH = 300
 
+# The Groq account's on-demand tier caps output at 1000 tokens/minute per
+# request (OTPM). Groq checks this against max_completion_tokens itself
+# (not actual usage) before the call even runs, so leaving it unset let the
+# SDK's default reservation request over 1000 and 429 on essentially every
+# real topic — this cap keeps the reservation comfortably under the limit.
+# The prompt below is sized (verified against real completions, ~350-500
+# actual tokens per topic) to finish well short of this cap on its own, so
+# it isn't just a truncation net.
+MAX_COMPLETION_TOKENS = 900
+
 _THINK_BLOCK_RE = re.compile(r"<think>.*?(</think>|$)", re.DOTALL)
 
 
 class KeywordResearchError(RuntimeError):
-    """The model didn't return parseable JSON."""
+    """The model didn't return parseable JSON, or the Groq call itself failed
+    (rate limit, model error, connection issue, ...). Always carries
+    FRIENDLY_ERROR_MESSAGE — main.py shows str(e) straight to the user, so
+    the technical reason goes in the logger.warning/info calls instead."""
+
+
+FRIENDLY_ERROR_MESSAGE = "Something went wrong generating results — try again in a moment."
 
 
 SYSTEM_PROMPT = """You are an Amazon KDP marketing researcher. Given a \
-book's topic or working title, suggest:
+book topic or working title, suggest, briefly and concisely:
 
-1. keywords: 10-15 specific search terms a reader would actually type into \
+1. keywords: 8-10 specific search terms a reader would actually type into \
 Amazon search to find this book. Prefer long-tail, buyer-intent phrases \
-over single generic words. For each, give a one-sentence reason a reader \
-would search that phrase.
-2. competitors: 5-8 real, specific book titles (with author if you know it) \
+over single generic words. For each, give a short reason (max 8 words, not \
+a full sentence) a reader would search that phrase.
+2. competitors: 4-6 real, specific book titles (with author if you know it) \
 that are likely direct competitors on Amazon for this topic.
-3. categories: 3-6 real Amazon Kindle/Book browse categories this book \
+3. categories: 3-4 real Amazon Kindle/Book browse categories this book \
 could be listed under, using Amazon's actual category naming (e.g. "Kindle \
 eBooks > Literature & Fiction > Genre Fiction > Mystery, Thriller & \
 Suspense > Mystery > Cozy").
@@ -52,6 +68,7 @@ Suspense > Mystery > Cozy").
 Be specific to the given topic — never return generic placeholders. If the \
 topic is too vague to research meaningfully, still make a best-effort \
 attempt based on the closest reasonable genre/niche rather than refusing.
+Keep the whole response terse — short phrases, no extra commentary.
 
 Return STRICT JSON, no prose, no fences:
 {
@@ -71,11 +88,13 @@ def _strip_to_json(raw: str) -> dict:
     if start != -1 and end != -1:
         cleaned = cleaned[start:end + 1]
     if not cleaned:
-        raise KeywordResearchError("Model returned no parseable content")
+        logger.warning("research_keywords: model returned no parseable content")
+        raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE)
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
-        raise KeywordResearchError(f"Model returned malformed JSON: {e}") from e
+        logger.warning("research_keywords: model returned malformed JSON: %s", e)
+        raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
 
 
 def _normalize(parsed: dict) -> dict:
@@ -108,15 +127,24 @@ def research_keywords(topic: str) -> dict:
     if len(topic) > MAX_TOPIC_LENGTH:
         raise ValueError(f"topic must be {MAX_TOPIC_LENGTH} characters or fewer")
 
-    resp = client.chat.completions.create(
-        model=MODEL,
-        temperature=0.2,
-        reasoning_effort="none",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Book topic/title: {topic}"},
-        ],
-    )
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            temperature=0.2,
+            reasoning_effort="none",
+            max_completion_tokens=MAX_COMPLETION_TOKENS,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Book topic/title: {topic}"},
+            ],
+        )
+    except APIError as e:
+        # Covers RateLimitError, APIConnectionError, model/auth errors, etc.
+        # (all subclass groq.APIError) — main.py turns this into a clean 502
+        # instead of a raw 500 crashing out of the request.
+        logger.warning("research_keywords Groq API call failed: %s", e)
+        raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
+
     raw_content = resp.choices[0].message.content
     # INFO, not DEBUG — same rationale as app.ai's passes: always visible so
     # a bad or malformed response can be diagnosed from the server log.

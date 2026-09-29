@@ -35,15 +35,17 @@ def test_successful_request_returns_ai_shape():
     assert res.json() == FAKE_RESULT
 
 
-def test_model_parse_failure_is_502():
+def test_model_parse_failure_is_502_with_friendly_message():
     _reset_limiter()
+    kw_module = main_module.keyword_research_module
     with patch.object(
-        main_module.keyword_research_module,
+        kw_module,
         "research_keywords",
-        side_effect=main_module.keyword_research_module.KeywordResearchError("bad json"),
+        side_effect=kw_module.KeywordResearchError(kw_module.FRIENDLY_ERROR_MESSAGE),
     ):
         res = client.post("/tools/keyword-research", json={"topic": "topic"})
     assert res.status_code == 502
+    assert res.json()["detail"] == kw_module.FRIENDLY_ERROR_MESSAGE
 
 
 def test_rate_limit_blocks_after_the_per_ip_cap():

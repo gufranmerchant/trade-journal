@@ -1,12 +1,18 @@
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+from groq import APIConnectionError, RateLimitError
 
 from app import keyword_research
 
 
 def _mock_response(content):
     return MagicMock(choices=[MagicMock(message=MagicMock(content=content))])
+
+
+def _fake_groq_request():
+    return httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
 
 
 def test_empty_topic_raises_value_error():
@@ -65,7 +71,28 @@ def test_research_keywords_strips_think_block_and_fences():
     assert result == {"keywords": [], "competitors": [], "categories": []}
 
 
-def test_malformed_json_raises_keyword_research_error():
+def test_malformed_json_raises_keyword_research_error_with_friendly_message():
     with patch.object(keyword_research.client.chat.completions, "create", return_value=_mock_response("not json")):
-        with pytest.raises(keyword_research.KeywordResearchError):
+        with pytest.raises(keyword_research.KeywordResearchError) as exc_info:
             keyword_research.research_keywords("topic")
+    assert str(exc_info.value) == keyword_research.FRIENDLY_ERROR_MESSAGE
+
+
+def test_groq_rate_limit_error_is_wrapped_with_friendly_message():
+    error = RateLimitError(
+        "Request too large for model in organization on output tokens per minute (OTPM)",
+        response=httpx.Response(429, request=_fake_groq_request()),
+        body=None,
+    )
+    with patch.object(keyword_research.client.chat.completions, "create", side_effect=error):
+        with pytest.raises(keyword_research.KeywordResearchError) as exc_info:
+            keyword_research.research_keywords("topic")
+    assert str(exc_info.value) == keyword_research.FRIENDLY_ERROR_MESSAGE
+
+
+def test_groq_connection_error_is_wrapped_with_friendly_message():
+    error = APIConnectionError(request=_fake_groq_request())
+    with patch.object(keyword_research.client.chat.completions, "create", side_effect=error):
+        with pytest.raises(keyword_research.KeywordResearchError) as exc_info:
+            keyword_research.research_keywords("topic")
+    assert str(exc_info.value) == keyword_research.FRIENDLY_ERROR_MESSAGE
