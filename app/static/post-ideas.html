@@ -66,11 +66,13 @@
         <p class="loading-title">Generating…</p>
       </div>
 
-      <div class="hidden" id="resultsWrap">
-        <div class="section-label">Post ideas</div>
-        <div class="rule-list" id="ideaList"></div>
+      <div class="hidden results-stack" id="resultsWrap">
+        <div>
+          <div class="section-label">Post ideas</div>
+          <div class="idea-list" id="ideaList"></div>
+        </div>
 
-        <div id="platformResults"></div>
+        <div class="platform-results-list" id="platformResults"></div>
       </div>
     </main>
   </div>
@@ -119,31 +121,29 @@
           .map((btn) => btn.dataset.platform);
       }
 
-      function tagList(items) {
+      function tagChips(items) {
         return (items || []).map((t) => `
-          <div class="rule-tile neutral">
-            <div class="rule-tile-text">
-              ${escapeHtml(t.tag)}
-              ${t.reason ? `<div class="section-hint">${escapeHtml(t.reason)}</div>` : ""}
-            </div>
-          </div>
+          <span class="chip chip-static" title="${escapeHtml(t.reason || "")}">${escapeHtml(t.tag)}</span>
         `).join("") || `<p class="section-hint">None suggested.</p>`;
       }
 
       function renderResults(data) {
-        el("ideaList").innerHTML = (data.ideas || []).map((idea) => `
-          <div class="rule-tile neutral">
-            <div class="rule-tile-text">
-              ${escapeHtml(idea.idea)}
-              ${idea.rationale ? `<div class="section-hint">${escapeHtml(idea.rationale)}</div>` : ""}
+        el("ideaList").innerHTML = (data.ideas || []).map((idea, i) => `
+          <div class="card idea-card">
+            <div class="idea-card-number">${i + 1}</div>
+            <div class="idea-card-body">
+              <div class="idea-card-title">${escapeHtml(idea.idea)}</div>
+              ${idea.rationale ? `<div class="idea-card-rationale">${escapeHtml(idea.rationale)}</div>` : ""}
             </div>
           </div>
         `).join("") || `<p class="section-hint">No ideas suggested.</p>`;
 
         const platformTags = data.platform_tags || {};
         el("platformResults").innerHTML = Object.keys(platformTags).map((key) => `
-          <div class="section-label">${escapeHtml(PLATFORM_LABELS[key] || key)}</div>
-          <div class="rule-list">${tagList(platformTags[key])}</div>
+          <div class="card platform-tag-card">
+            <div class="section-label">${escapeHtml(PLATFORM_LABELS[key] || key)}</div>
+            <div class="chip-static-list">${tagChips(platformTags[key])}</div>
+          </div>
         `).join("");
 
         el("resultsWrap").classList.remove("hidden");

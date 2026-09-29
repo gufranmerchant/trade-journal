@@ -430,6 +430,59 @@ button {
    meant to be seen all at once, not scanned/scrolled. */
 .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
 
+/* ---------- Post Idea Finder results ---------- */
+/* Groups the "Post ideas" block and the per-platform tag cards with real
+   spacing between them — without this, #resultsWrap's children (a plain
+   div with no layout of its own) just stack flush with zero gap, reading
+   as one continuous list. */
+.results-stack { display: flex; flex-direction: column; gap: 20px; }
+
+/* Post ideas get a heavier, numbered-card treatment — a title plus a
+   longer rationale is more than a short tag deserves, so it's visually
+   distinct from the hashtag/keyword chips below. */
+.idea-list { display: flex; flex-direction: column; gap: 10px; }
+
+.idea-card {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+}
+
+.idea-card-number {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--teal-tint);
+  color: var(--teal-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.idea-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.idea-card-title { font-size: 14px; font-weight: 700; color: var(--text-primary); line-height: 1.4; }
+.idea-card-rationale { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+/* Each platform's hashtags/keywords get their own card (subtle background
+   separation from the ideas above and from each other) but the tags
+   themselves are compact chip-static pills, not full rows — short tags
+   with a one-line reason don't need a keyword-research-style vertical
+   list. The reason is available as a title tooltip rather than shown
+   inline, keeping the row compact. */
+.platform-results-list { display: flex; flex-direction: column; gap: 12px; }
+
+.platform-tag-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 /* ---------- Trade list toolbar (select mode) ---------- */
 .list-toolbar {
   display: flex;
