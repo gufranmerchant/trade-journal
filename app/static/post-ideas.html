@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("mirror_theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Post Idea Finder — Marketer Mirror</title>
+  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="icon-button" href="/marketer/social" aria-label="Back to Social">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"></path>
+          <path d="M12 19l-7-7 7-7"></path>
+        </svg>
+      </a>
+      <span class="topbar-title">Post Idea Finder</span>
+      <div class="topbar-actions" id="topbarActions">
+        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
+      </div>
+    </header>
+
+    <main class="content">
+      <p class="page-lede">
+        Enter a content topic for AI-researched post ideas and platform
+        hashtags/keywords to jumpstart your content plan — always verify
+        against the platform before using them in a real post or campaign.
+      </p>
+
+      <div class="field-block">
+        <label class="field-label" for="topicInput">Content topic</label>
+        <input class="text-input" type="text" id="topicInput" maxlength="300"
+               placeholder="e.g. a small bakery launching a new sourdough bread line">
+      </div>
+
+      <div class="field-block">
+        <label class="field-label">Platforms</label>
+        <div class="chip-group" id="platformPicker" role="group" aria-label="Platforms">
+          <button type="button" class="chip" data-platform="linkedin">LinkedIn</button>
+          <button type="button" class="chip" data-platform="instagram">Instagram</button>
+          <button type="button" class="chip" data-platform="tiktok">TikTok</button>
+          <button type="button" class="chip" data-platform="youtube">YouTube</button>
+          <button type="button" class="chip" data-platform="medium">Medium</button>
+        </div>
+      </div>
+
+      <div class="error-banner hidden" id="errorBanner"></div>
+
+      <button class="cta-button" id="generateBtn" type="button">Generate</button>
+
+      <div class="loading-state hidden" id="loadingView" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="loading-title">Generating…</p>
+      </div>
+
+      <div class="hidden" id="resultsWrap">
+        <div class="section-label">Post ideas</div>
+        <div class="rule-list" id="ideaList"></div>
+
+        <div id="platformResults"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/js/nav.js"></script>
+  <script>
+    MirrorNav.markLastUsed("marketer");
+    MirrorNav.mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
+  </script>
+
+  <script>
+    (() => {
+      "use strict";
+      const el = (id) => document.getElementById(id);
+
+      // Mirrors app/post_ideas.py's PLATFORM_LABELS — used only to label the
+      // results the backend already keyed by these same lowercase platform
+      // keys, in the same canonical order.
+      const PLATFORM_LABELS = {
+        linkedin: "LinkedIn",
+        instagram: "Instagram",
+        tiktok: "TikTok",
+        youtube: "YouTube",
+        medium: "Medium",
+      };
+
+      // User-typed topic and model-generated idea/tag/reason text all go
+      // through this before hitting innerHTML.
+      const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+
+      function showError(message) {
+        el("errorBanner").textContent = message;
+        el("errorBanner").classList.remove("hidden");
+      }
+      function hideError() {
+        el("errorBanner").classList.add("hidden");
+      }
+      function hideResults() {
+        el("resultsWrap").classList.add("hidden");
+      }
+
+      function selectedPlatforms() {
+        return Array.from(document.querySelectorAll("#platformPicker .chip.active"))
+          .map((btn) => btn.dataset.platform);
+      }
+
+      function tagList(items) {
+        return (items || []).map((t) => `
+          <div class="rule-tile neutral">
+            <div class="rule-tile-text">
+              ${escapeHtml(t.tag)}
+              ${t.reason ? `<div class="section-hint">${escapeHtml(t.reason)}</div>` : ""}
+            </div>
+          </div>
+        `).join("") || `<p class="section-hint">None suggested.</p>`;
+      }
+
+      function renderResults(data) {
+        el("ideaList").innerHTML = (data.ideas || []).map((idea) => `
+          <div class="rule-tile neutral">
+            <div class="rule-tile-text">
+              ${escapeHtml(idea.idea)}
+              ${idea.rationale ? `<div class="section-hint">${escapeHtml(idea.rationale)}</div>` : ""}
+            </div>
+          </div>
+        `).join("") || `<p class="section-hint">No ideas suggested.</p>`;
+
+        const platformTags = data.platform_tags || {};
+        el("platformResults").innerHTML = Object.keys(platformTags).map((key) => `
+          <div class="section-label">${escapeHtml(PLATFORM_LABELS[key] || key)}</div>
+          <div class="rule-list">${tagList(platformTags[key])}</div>
+        `).join("");
+
+        el("resultsWrap").classList.remove("hidden");
+      }
+
+      async function generate() {
+        const topic = el("topicInput").value.trim();
+        const platforms = selectedPlatforms();
+
+        if (!topic) {
+          showError("Enter a content topic.");
+          return;
+        }
+        if (platforms.length === 0) {
+          showError("Select at least one platform.");
+          return;
+        }
+
+        hideError();
+        hideResults();
+        const btn = el("generateBtn");
+        btn.disabled = true;
+        el("loadingView").classList.remove("hidden");
+
+        try {
+          const res = await fetch("/tools/post-ideas", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic, platforms }),
+          });
+          if (!res.ok) {
+            let message = `Request failed (${res.status})`;
+            try {
+              const body = await res.json();
+              if (body && body.detail) message = body.detail;
+            } catch (_) {}
+            throw new Error(message);
+          }
+          renderResults(await res.json());
+        } catch (err) {
+          showError(err.message || "Couldn't generate ideas — try again.");
+        } finally {
+          btn.disabled = false;
+          el("loadingView").classList.add("hidden");
+        }
+      }
+
+      document.querySelectorAll("#platformPicker .chip").forEach((btn) => {
+        btn.addEventListener("click", () => btn.classList.toggle("active"));
+      });
+
+      el("generateBtn").addEventListener("click", generate);
+      el("topicInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") generate();
+      });
+    })();
+  </script>
+</body>
+</html>

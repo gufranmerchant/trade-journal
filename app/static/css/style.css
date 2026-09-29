@@ -425,6 +425,11 @@ button {
 .chip.chip-static { cursor: default; }
 .chip.chip-static:hover { border-color: var(--card-border); }
 
+/* Multi-select chip picker (e.g. post-ideas' platform picker) — wraps
+   instead of .filters' horizontal scroll since it's a fixed, short list
+   meant to be seen all at once, not scanned/scrolled. */
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+
 /* ---------- Trade list toolbar (select mode) ---------- */
 .list-toolbar {
   display: flex;

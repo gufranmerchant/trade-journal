@@ -70,6 +70,7 @@ from app import ai
 from app import kdp
 from app import ads_analyser as ads_analyser_module
 from app import keyword_research as keyword_research_module
+from app import post_ideas as post_ideas_module
 from app.rate_limit import RateLimiter
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
@@ -170,6 +171,11 @@ def serve_ads_analyser():
 @app.get("/marketer/books/keyword-research", include_in_schema=False)
 def serve_keyword_research():
     return _serve_static_page("keyword-research.html")
+
+
+@app.get("/marketer/social/post-ideas", include_in_schema=False)
+def serve_post_ideas():
+    return _serve_static_page("post-ideas.html")
 
 
 @app.get("/marketer/kdp-breakeven", include_in_schema=False)
@@ -878,4 +884,39 @@ def keyword_research(payload: KeywordResearchRequest, request: Request):
         # str(e) is always keyword_research.FRIENDLY_ERROR_MESSAGE — the
         # technical reason (bad JSON, Groq API failure, ...) is logged
         # server-side by research_keywords itself, not shown to the user.
+        raise HTTPException(502, str(e))
+
+
+# Same per-IP cost guardrail as /tools/keyword-research above, and for the
+# same reason — a real Groq call per request, no logged-in user to cap
+# per-account.
+POST_IDEAS_LIMIT_PER_HOUR = 5
+_post_ideas_limiter = RateLimiter(limit=POST_IDEAS_LIMIT_PER_HOUR, window_seconds=3600)
+
+
+class PostIdeasRequest(BaseModel):
+    topic: str
+    platforms: list[str]
+
+
+@app.post("/tools/post-ideas")
+def post_ideas(payload: PostIdeasRequest, request: Request):
+    """Stateless, no Clerk auth — same pattern as /tools/keyword-research
+    above. The rate limit is checked BEFORE the Groq call runs, for the
+    same reason."""
+    if not _post_ideas_limiter.allow(_client_ip(request)):
+        raise HTTPException(
+            429,
+            f"You've hit the limit of {POST_IDEAS_LIMIT_PER_HOUR} requests per hour "
+            "for this tool — try again later.",
+        )
+
+    try:
+        return post_ideas_module.generate_post_ideas(payload.topic, payload.platforms)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except post_ideas_module.PostIdeasError as e:
+        # str(e) is always post_ideas.FRIENDLY_ERROR_MESSAGE — the technical
+        # reason is logged server-side by generate_post_ideas itself, not
+        # shown to the user.
         raise HTTPException(502, str(e))
