@@ -56,15 +56,21 @@
         <p class="loading-title">Researching…</p>
       </div>
 
-      <div class="hidden" id="resultsWrap">
-        <div class="section-label">Suggested keywords</div>
-        <div class="rule-list" id="keywordList"></div>
+      <div class="hidden results-stack" id="resultsWrap">
+        <div>
+          <div class="section-label">Suggested keywords</div>
+          <div class="idea-list" id="keywordList"></div>
+        </div>
 
-        <div class="section-label">Likely competitors</div>
-        <div class="chip-static-list" id="competitorList"></div>
+        <div class="card platform-tag-card">
+          <div class="section-label">Likely competitors</div>
+          <div class="chip-static-list" id="competitorList"></div>
+        </div>
 
-        <div class="section-label">Suggested categories</div>
-        <div class="chip-static-list" id="categoryList"></div>
+        <div class="card platform-tag-card">
+          <div class="section-label">Suggested categories</div>
+          <div class="chip-static-list" id="categoryList"></div>
+        </div>
       </div>
     </main>
   </div>
@@ -98,11 +104,12 @@
       }
 
       function renderResults(data) {
-        el("keywordList").innerHTML = (data.keywords || []).map((k) => `
-          <div class="rule-tile neutral">
-            <div class="rule-tile-text">
-              ${escapeHtml(k.keyword)}
-              ${k.reason ? `<div class="section-hint">${escapeHtml(k.reason)}</div>` : ""}
+        el("keywordList").innerHTML = (data.keywords || []).map((k, i) => `
+          <div class="card idea-card">
+            <div class="idea-card-number">${i + 1}</div>
+            <div class="idea-card-body">
+              <div class="idea-card-title">${escapeHtml(k.keyword)}</div>
+              ${k.reason ? `<div class="idea-card-rationale">${escapeHtml(k.reason)}</div>` : ""}
             </div>
           </div>
         `).join("") || `<p class="section-hint">No keywords suggested.</p>`;
