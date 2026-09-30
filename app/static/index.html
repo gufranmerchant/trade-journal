@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-design="instrument" data-follow-os data-surface="trading">
 <head>
   <meta charset="UTF-8">
   <script>
@@ -12,17 +12,27 @@
         var stored = localStorage.getItem("mirror_theme");
         if (stored === "light" || stored === "dark") {
           document.documentElement.setAttribute("data-theme", stored);
+        } else {
+          // No stored choice: follow the OS. instrument.css (active on the
+          // dashboard) is dark by default, so this has to be an explicit
+          // attribute rather than the absence of one.
+          document.documentElement.setAttribute("data-theme",
+            window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         }
       } catch (e) {}
     })();
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Mirror</title>
-  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
+  <meta name="theme-color" content="#0E1210" id="themeColorMeta">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon.svg">
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:wght@500;600&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/static/css/instrument.css">
   <!-- Clerk's own vanilla-JS quickstart pattern: the hosted script is served
        from this instance's own frontend-api domain (derived from the
        publishable key below) and auto-instantiates window.Clerk once loaded.
@@ -55,7 +65,7 @@
 
     <header class="topbar hidden" id="homeTopbar">
       <div class="brand">
-        <span class="brand-dot"></span>
+        <span class="mm-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3.5C5.5 7 5.5 17 12 20.5"/><path d="M12 3.5C18.5 7 18.5 17 12 20.5"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg></span>
         <span class="brand-name">Mirror</span>
       </div>
       <div class="topbar-actions" id="homeTopbarActions">
@@ -137,7 +147,8 @@
     </header>
 
     <main class="content hidden" id="homeView">
-      <section class="hero card">
+      <section class="hero card term">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">dashboard.exe</span></div>
         <div class="ring-wrap">
           <svg class="ring" viewBox="0 0 176 176">
             <circle class="ring-track" cx="88" cy="88" r="76"></circle>
@@ -163,7 +174,8 @@
         </div>
       </section>
 
-      <section class="stats-row">
+      <section class="stats-row term">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">stats.out</span></div>
         <div class="stat-card card">
           <div class="stat-label">Rules followed</div>
           <div class="stat-value" id="rulesFollowed">0/0</div>
@@ -177,12 +189,17 @@
 
       <nav class="filters" id="filters" aria-label="Filter trades"></nav>
 
-      <div class="list-toolbar">
-        <span class="list-toolbar-count hidden" id="selectedCountLabel">0 selected</span>
-        <button type="button" class="select-toggle-btn" id="selectModeBtn">Select</button>
-      </div>
+      <section class="term trade-panel">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">trades.log</span></div>
+        <div class="trade-panel-body">
+          <div class="list-toolbar">
+            <span class="list-toolbar-count hidden" id="selectedCountLabel">0 selected</span>
+            <button type="button" class="select-toggle-btn" id="selectModeBtn">Select</button>
+          </div>
 
-      <section class="trade-list" id="tradeList" aria-live="polite"></section>
+          <section class="trade-list" id="tradeList" aria-live="polite"></section>
+        </div>
+      </section>
     </main>
 
     <main class="content hidden" id="logView">

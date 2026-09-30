@@ -540,6 +540,9 @@
     el("manageTopbar").classList.toggle("hidden", view !== "manage");
     el("strategyDetailTopbar").classList.toggle("hidden", view !== "strategyDetail");
     el("homeCta").classList.toggle("hidden", view !== "home");
+    // Only the dashboard (and the initial loading spinner) use the Instrument
+    // look so far; every other view keeps style.css's original styling.
+    MirrorNav.setInstrumentDesign(view === "home" || view === "authLoading");
     window.scrollTo(0, 0);
   }
 

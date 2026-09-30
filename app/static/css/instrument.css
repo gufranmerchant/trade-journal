@@ -205,7 +205,9 @@ html[data-design="instrument"] .icon-button:hover {
 }
 html[data-design="instrument"] :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
-html[data-design="instrument"] .nav-switcher-menu {
+/* .card.nav-switcher-menu: the menu is also a .card, and the later translucent
+   `.card` rule would otherwise win — a see-through dropdown over page content. */
+html[data-design="instrument"] .card.nav-switcher-menu {
   background: var(--mm-menu-bg);
   backdrop-filter: none;
   border-radius: 12px;
@@ -563,4 +565,137 @@ html[data-design="instrument"][data-theme="light"] .tool-card-badge { border-col
 @media (prefers-reduced-motion: reduce) {
   a.term-card, .term-card-chevron { transition: none; }
   a.term-card:hover { transform: none; }
+}
+
+/* =====================================================================
+   Trading Mirror dashboard (index.html's home view) — scoped by
+   data-surface="trading" where it needs to differ from the marketer pages.
+   index.html is one single-page app; app.js's showView() only leaves
+   data-design="instrument" on for the dashboard, so none of this reaches the
+   log / detail / strategy / manage views.
+
+   Reskin only. Semantics deliberately kept: teal = identity + primary CTA,
+   purple = XP/level, coral = off-plan, amber = rule(s) failed.
+   ===================================================================== */
+
+/* The marketer palette mutes coral/amber into 10%-alpha tints. On the trade
+   list a user has to spot a coral off-plan row instantly, so restore the
+   original full-strength coral and amber surfaces. */
+html[data-design="instrument"][data-surface="trading"]:root {
+  --coral: #FF9269;
+  --coral-bg: #3D2317;
+  --coral-bg-hover: #4F2C1D;
+  --warning: #F5B44E;
+  --warning-bg: #3B2C10;
+}
+html[data-design="instrument"][data-surface="trading"][data-theme="light"]:root {
+  --coral: #993C1D;
+  --coral-bg: #FAECE7;
+  --coral-bg-hover: #F5DCD1;
+  --warning: #854F0B;
+  --warning-bg: #FBF0DD;
+}
+
+/* Dashboard keeps its original phone-first column width. */
+html[data-design="instrument"][data-surface="trading"] .app { max-width: 560px; }
+
+/* Header: the logo mark replaces the old dot; every control stays. */
+html[data-design="instrument"] .topbar { padding: 18px 20px 8px; gap: 12px; }
+html[data-design="instrument"] .brand { gap: 10px; }
+html[data-design="instrument"] .brand-name {
+  font-family: var(--mm-serif);
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+html[data-design="instrument"] .avatar { border: 1px solid var(--card-border); }
+
+/* ---- Ring / XP panel ---- */
+html[data-design="instrument"] .hero.term { padding: 0 0 22px; gap: 18px; }
+.hero.term > .term-bar { align-self: stretch; }
+.hero.term > .ring-wrap { margin-top: 6px; }
+.hero.term > .hero-meta { margin-inline: 20px; }
+.hero.term > .xp-bar-wrap { width: calc(100% - 40px); }
+
+html[data-design="instrument"] .ring-track { stroke: var(--ring-track); }
+html[data-design="instrument"] .ring-progress { stroke: var(--teal); }  /* teal stays the identity colour */
+html[data-design="instrument"] .ring-value {
+  font-family: var(--mm-serif);
+  font-weight: 500;
+  font-size: 50px;
+  letter-spacing: -0.02em;
+}
+html[data-design="instrument"] .ring-label {
+  font-family: var(--mm-mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+html[data-design="instrument"] .level-badge {           /* purple stays XP/level */
+  font-family: var(--mm-mono);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+html[data-design="instrument"] .xp-caption { font-family: var(--mm-mono); font-size: 11px; }
+
+/* ---- Stats row: one terminal window holding both stat cards ---- */
+html[data-design="instrument"] .stats-row.term { gap: 0; }
+.stats-row.term > .term-bar { grid-column: 1 / -1; }
+html[data-design="instrument"] .stats-row.term .stat-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: 16px 18px;
+}
+.stats-row.term .stat-card + .stat-card { border-left: 1px solid var(--card-border); }
+html[data-design="instrument"] .stat-label {
+  font-family: var(--mm-mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+html[data-design="instrument"] .stat-value {
+  font-family: var(--mm-serif);
+  font-weight: 500;
+  font-size: 20px;   /* same size as before the reskin: "+$1305 · +5.4R" has to fit a half-width cell at 390px */
+  letter-spacing: -0.01em;
+}
+
+/* ---- Filter chips ---- */
+html[data-design="instrument"] .chip-manage-btn { border-radius: 10px; }
+
+/* ---- Trade list panel ---- */
+.trade-panel-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+html[data-design="instrument"] .trade-panel .trade-row {
+  background: var(--mm-input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+html[data-design="instrument"] .trade-panel .trade-row:hover { border-color: var(--card-border-hover); }
+html[data-design="instrument"] .trade-panel .trade-row.selected { box-shadow: inset 0 0 0 2px var(--teal); }
+html[data-design="instrument"] .trade-panel .empty-state {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-design="instrument"] .trade-icon { border-radius: 10px; }
+html[data-design="instrument"] .trade-r-primary { font-family: var(--mm-mono); font-weight: 700; }
+html[data-design="instrument"] .trade-r-usd { font-family: var(--mm-mono); }
+
+/* The confirm modal shares .card; it must be opaque, not a see-through panel. */
+html[data-design="instrument"] .modal-card {
+  background: var(--mm-menu-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }

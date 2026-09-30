@@ -63,7 +63,7 @@
   function applyTheme(explicitTheme) {
     if (explicitTheme) {
       document.documentElement.setAttribute("data-theme", explicitTheme);
-    } else if (isInstrument()) {
+    } else if (isInstrument() || followsOS()) {
       // instrument.css has no prefers-color-scheme block of its own (dark is
       // its bare default), so "follow the OS" has to be an explicit attribute
       // here rather than the absence of one. Not persisted — a stored choice
@@ -212,5 +212,14 @@
     else addFooter();
   }
 
-  window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher, mountShell };
+  // For single-page apps whose views don't all use the Instrument look (the
+  // trading app: only its dashboard does). Toggles the design on/off and
+  // refreshes the browser-chrome theme colour to match.
+  function setInstrumentDesign(on) {
+    if (on) document.documentElement.setAttribute("data-design", "instrument");
+    else document.documentElement.removeAttribute("data-design");
+    updateThemeToggleUI(activeTheme());
+  }
+
+  window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher, mountShell, setInstrumentDesign };
 })();
