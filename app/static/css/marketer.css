@@ -428,6 +428,19 @@ html[data-app="marketer"] .chip {
   font-weight: 700;
 }
 html[data-app="marketer"] .chip.chip-static { font-weight: 600; cursor: default; }
+/* style.css gives .chip flex-shrink: 0 (right for short filter pills), so a long
+   competitor/category entry sat on one line and was clipped by the results
+   panel. Static chips hold sentences and category paths: let them shrink and wrap. */
+html[data-app="marketer"] .chip.chip-static {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  line-height: 1.45;
+  border-radius: 10px;
+}
 html[data-app="marketer"] .segment-btn:hover,
 html[data-app="marketer"] .chip:hover { border-color: var(--card-border-hover); }
 html[data-app="marketer"] .segment-btn.active,
