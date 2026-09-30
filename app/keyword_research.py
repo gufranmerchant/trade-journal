@@ -252,7 +252,7 @@ def research_keywords(topic: str) -> dict:
     volumes = books_future.result()
     # The model's own category suggestions tell us whether this is a fiction genre,
     # which decides if criticism / craft / film books count as off-topic.
-    fiction = any("fiction" in c.lower() for c in result["categories"])
+    fiction = books.looks_like_fiction(topic, result["categories"])
     book_entries = books.pick_competitors(topic, volumes, fiction=fiction)
     if len(book_entries) < books.MAX_COMPETITORS and result["keywords"]:
         # Not enough real books for the topic itself: a second parallel wave on the

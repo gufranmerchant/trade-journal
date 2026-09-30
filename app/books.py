@@ -277,7 +277,32 @@ _JUVENILE_CATEGORY_PREFIXES = ("juvenile", "young adult")
 _YOUNG_READER_TOPIC_RE = re.compile(r"\b(children|child|kids?|juvenile|teens?|young adult|ya|middle grade|picture)\b", re.I)
 
 
+# Words that mark a topic or an Amazon category as a fiction genre. Looking only for the word
+# "fiction" missed e.g. a "Mystery, Thriller & Suspense > ... > Hard-Boiled" suggestion.
+_FICTION_WORDS_RE = re.compile(
+    r"\b(fiction|novels?|mystery|mysteries|thrillers?|suspense|romance|romances|fantasy|horror|noir|"
+    r"detective|whodunits?|cozy|cosy|western|saga|space opera|sci-?fi|dystopian|paranormal|litrpg|"
+    r"dragons?|vampires?|werewolf|werewolves)\b", re.I)
+_NONFICTION_OVERRIDE_RE = re.compile(r"\b(true crime|cookbooks?|recipes?|memoirs?|self-help|how to|guide)\b", re.I)
+
+
+def looks_like_fiction(topic: str, categories=()) -> bool:
+    """True when the topic or the model's category suggestions describe a fiction genre."""
+    text = " ".join([topic, *[str(c) for c in categories]])
+    return bool(_FICTION_WORDS_RE.search(text)) and not _NONFICTION_OVERRIDE_RE.search(topic)
+
+
+# For fiction topics, a title/subtitle that says it's about films, criticism or a guide is a
+# reference work even when Google gives it no category.
+_ABOUT_FICTION_SUBTITLE_RE = re.compile(
+    r"\b(films?|cinema|movies?|screenplays?|criticism|essays?|guide to|history of|great lines|quotations?)\b", re.I)
+_ABOUT_FICTION_TITLE_RE = re.compile(r"\b(criticism|essays on|encyclopedia|quotations)\b", re.I)
+
+
 def _category_ok(topic: str, info: dict, fiction: bool | None) -> bool:
+    if fiction and (_ABOUT_FICTION_SUBTITLE_RE.search(info.get("subtitle") or "")
+                    or _ABOUT_FICTION_TITLE_RE.search(info.get("title") or "")):
+        return False
     cats = [str(c).lower() for c in (info.get("categories") or [])]
     if not cats:
         return True  # indie titles often carry no categories; judge them on the other signals

@@ -261,7 +261,15 @@ def test_fewer_books_than_slots_are_topped_up_per_slot_with_pattern_blurbs():
     result, lookup = _research("cozy mystery", _model_reply(PATTERNS), lambda *a, **k: _volumes(2))
     assert [c["kind"] for c in result["competitors"]] == ["book", "book", "pattern", "pattern", "pattern"]
     assert lookup.call_count == 2          # second parallel wave on the model's top keywords
-    assert lookup.call_args.kwargs["extra_queries"] == ["cozy mystery", "cozy bakery mystery", "village cozy mystery"]
+    # "cozy mystery" is a fiction genre, so the second wave is constrained to fiction
+    assert lookup.call_args.kwargs["extra_queries"] == [
+        "cozy mystery subject:fiction", "cozy bakery mystery subject:fiction", "village cozy mystery subject:fiction"]
+
+
+def test_non_fiction_topics_get_no_subject_fiction_constraint():
+    result, lookup = _research("keto cookbook for beginners", _model_reply(PATTERNS, keywords=("keto meal plan", "keto recipes")),
+                               lambda *a, **k: _volumes(1), categories=("Kindle eBooks > Cookbooks, Food & Wine",))
+    assert lookup.call_args.kwargs["extra_queries"] == ["keto cookbook for beginners", "keto meal plan", "keto recipes"]
 
 
 def test_fiction_topics_add_subject_fiction_to_the_second_wave():
@@ -391,3 +399,41 @@ def test_the_suite_cannot_reach_the_real_google_books_api():
     # locally (ConnectError wrapped as BooksLookupError), never go out to Google.
     with pytest.raises(books.BooksLookupError, match="ConnectError"):
         REAL_FETCH("cozy mystery")
+
+
+# ------------------------------------------------------------------ fiction detection + reference-work wording
+
+@pytest.mark.parametrize("topic, categories, expected", [
+    ("hard-boiled noir", ["Kindle eBooks > Mystery, Thriller & Suspense > Mystery > Hard-Boiled"], True),  # no "fiction" anywhere
+    ("cozy mystery novels", [], True),
+    ("epic fantasy dragon riders", [], True),
+    ("regency romance", ["Kindle eBooks > Romance > Historical > Regency"], True),
+    ("keto cookbook for beginners", ["Kindle eBooks > Cookbooks, Food & Wine"], False),
+    ("true crime podcasts", ["Kindle eBooks > Biographies & Memoirs"], False),
+    ("indie book marketing on a budget", ["Kindle eBooks > Business & Money"], False),
+    ("how to write a mystery novel", [], False),   # craft books are non-fiction even though "mystery"/"novel" appear
+])
+def test_looks_like_fiction(topic, categories, expected):
+    assert books.looks_like_fiction(topic, categories) is expected
+
+
+def test_noir_reference_books_seen_live_are_rejected_but_real_noir_fiction_is_kept():
+    # Exact title/subtitle pairs returned by the live API for "hard-boiled noir", with no categories.
+    reference = [
+        vol("American, Hard-boiled and Noir", ["William Marling"], "A guide to hard-boiled noir.", (), subtitle="A Guide to the Fiction and Film"),
+        vol("Unless the Threat of Death Is Behind Them", ["John T. Irwin"], "Hard-boiled noir studies.", (), subtitle="Hard-Boiled Fiction and Film Noir"),
+        vol("Hard-boiled", ["Peggy Thompson"], "Hard-boiled noir film quotes.", (), subtitle="Great Lines from Classic Noir Films"),
+    ]
+    fiction = [
+        vol("Hard-boiled", ["Bill Pronzini", "Jack Adrian"], "This anthology collects hard-boiled noir crime and detective short stories.", ()),
+        vol("3 Great Hardboiled Crime Novels", ["Dashiell Hammett"], "Three hard-boiled noir novels.", ()),
+    ]
+    picked = books.pick_competitors("hard-boiled noir", reference + fiction, fiction=True)
+    assert sorted(b["author"] for b in picked) == ["Bill Pronzini, Jack Adrian", "Dashiell Hammett"]
+    # the same rule is off for a non-fiction topic, where a film guide can be exactly what's wanted
+    assert len(books.pick_competitors("hard-boiled noir film", reference, fiction=False)) == 3
+
+
+def test_famous_novels_with_film_or_guide_words_in_the_title_are_not_dropped():
+    novel = vol("The Hitchhiker's Guide to the Galaxy", ["Douglas Adams"], "A humorous science fiction novel.", ["Fiction / Science Fiction"])
+    assert len(books.pick_competitors("science fiction novels", [novel], fiction=True)) == 1
