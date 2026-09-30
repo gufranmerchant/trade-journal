@@ -203,7 +203,8 @@
     </main>
 
     <main class="content hidden" id="logView">
-      <section class="log-form" id="logFormView">
+      <section class="log-form term" id="logFormView">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">upload.exe</span></div>
         <div class="field-block">
           <label class="field-label" id="screenshotLabel">Screenshots <span class="field-optional">(up to 3)</span></label>
           <div class="dropzone" id="dropzone" role="group" aria-labelledby="screenshotLabel">
@@ -252,7 +253,8 @@
         <button type="button" class="cta-button" id="logLimitDoneBtn">Done</button>
       </section>
 
-      <section class="result-state hidden" id="logResultView" aria-live="polite">
+      <section class="result-state term hidden" id="logResultView" aria-live="polite">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">verdict.out</span></div>
         <div class="result-header">
           <div class="trade-icon" id="resultIcon"></div>
           <div class="result-header-text">
@@ -343,6 +345,8 @@
       </section>
 
       <section class="detail-body hidden" id="detailBodyView" aria-live="polite">
+       <div class="term detail-summary">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">trade.log</span></div>
         <div class="result-header">
           <div class="trade-icon" id="detailIcon"></div>
           <div class="result-header-text">
@@ -386,8 +390,10 @@
           <div class="coach-note-label">Context</div>
           <p id="detailContextText"></p>
         </div>
+       </div>
 
-        <div class="detail-edit-section">
+        <div class="detail-edit-section term">
+          <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">edit.exe</span></div>
           <div class="section-label">Trade details</div>
           <p class="section-hint">Edit anything the screenshot parser got wrong.</p>
 
@@ -497,13 +503,18 @@
     </main>
 
     <main class="content hidden" id="manageView">
-      <p class="section-hint">Active setups show normally. Deactivate one to hide it from your pickers without losing its trade history — or bring it back anytime.</p>
+      <section class="term manage-panel">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">strategies.cfg</span></div>
+        <div class="manage-panel-body">
+          <p class="section-hint">Active setups show normally. Deactivate one to hide it from your pickers without losing its trade history — or bring it back anytime.</p>
 
-      <div class="error-banner hidden" id="manageErrorBanner" role="alert">
-        <span id="manageErrorText"></span>
-      </div>
+          <div class="error-banner hidden" id="manageErrorBanner" role="alert">
+            <span id="manageErrorText"></span>
+          </div>
 
-      <section class="manage-list" id="manageStrategyList" aria-live="polite"></section>
+          <section class="manage-list" id="manageStrategyList" aria-live="polite"></section>
+        </div>
+      </section>
     </main>
 
     <main class="content hidden" id="strategyDetailView">

@@ -699,3 +699,153 @@ html[data-design="instrument"] .modal-card {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+/* =====================================================================
+   Trading Mirror: Log Trade, trade detail, Manage Strategies.
+   (app.js's showView() enables the design for exactly these views plus the
+   dashboard; the Clerk sign-in and strategy create/edit/detail screens keep
+   style.css's original look.) Reskin only: no field, control or copy moves.
+   ===================================================================== */
+
+/* Header: same square bordered icon language as the dashboard. The delete
+   button must stay coral — the generic .icon-button rule above would
+   otherwise wash it out. */
+html[data-design="instrument"] .topbar-title {
+  font-family: var(--mm-serif);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+html[data-design="instrument"] .icon-button.icon-button-danger {
+  background: var(--coral-bg);
+  color: var(--coral);
+  border-color: rgba(255, 146, 105, 0.4);
+}
+html[data-design="instrument"][data-theme="light"] .icon-button.icon-button-danger { border-color: rgba(153, 60, 29, 0.35); }
+html[data-design="instrument"] .icon-button.icon-button-danger:hover { background: var(--coral-bg-hover); }
+
+/* Panels whose children are direct (no .term-body): inset them like the
+   results panels, and keep the bar full-bleed. */
+.log-form.term, .result-state.term, .detail-edit-section.term, .detail-summary.term { padding-bottom: 18px; }
+.log-form.term > :not(.term-bar),
+.result-state.term > :not(.term-bar),
+.detail-edit-section.term > :not(.term-bar),
+.detail-summary.term > :not(.term-bar) { margin-inline: 18px; }
+.log-form.term > .term-bar + *,
+.detail-edit-section.term > .term-bar + * { margin-top: 18px; }
+.result-state.term, .detail-summary.term { display: flex; flex-direction: column; gap: 16px; }
+.result-state.term > .term-bar, .detail-summary.term > .term-bar { margin-bottom: 2px; }
+
+/* ---- Log Trade ---- */
+html[data-design="instrument"] .dropzone {
+  border: 1.5px dashed var(--card-border);
+  border-radius: 12px;
+  background: var(--mm-input-bg);
+}
+html[data-design="instrument"] .dropzone:hover { border-color: var(--card-border-hover); }
+html[data-design="instrument"] .dropzone.dragging { border-color: var(--teal); background: var(--teal-tint); }
+html[data-design="instrument"] .dropzone-icon { border: 1px solid rgba(45, 212, 166, 0.3); }
+html[data-design="instrument"][data-theme="light"] .dropzone-icon { border-color: rgba(21, 138, 99, 0.3); }
+html[data-design="instrument"] .dropzone-hint { font-family: var(--mm-mono); font-size: 11px; }
+html[data-design="instrument"] .screenshot-add-tile { border-radius: 10px; border: 1.5px dashed var(--card-border); }
+
+html[data-design="instrument"] .strategy-option {
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--mm-input-bg);
+}
+html[data-design="instrument"] .strategy-option:hover { border-color: var(--card-border-hover); }
+html[data-design="instrument"] .strategy-option.active { border-color: var(--teal); background: var(--teal-tint); }
+html[data-design="instrument"] .strategy-option.offplan-option.active { border-color: var(--coral); background: var(--coral-bg); }
+html[data-design="instrument"] .strategy-option-hint { font-family: var(--mm-mono); font-size: 11px; }
+html[data-design="instrument"] .strategy-edit-btn {
+  border: 1px solid var(--card-border);
+  background: transparent;
+  border-radius: 10px;
+}
+html[data-design="instrument"] .strategy-edit-btn:hover { background: var(--teal-tint); border-color: var(--card-border-hover); }
+html[data-design="instrument"] .strategy-add-btn,
+html[data-design="instrument"] .add-rule-btn {
+  border: 1.5px dashed var(--card-border);
+  border-radius: 10px;
+  background: transparent;
+}
+html[data-design="instrument"] .strategy-add-btn:hover { border-color: var(--teal); background: var(--teal-tint); }
+
+/* ---- Verdict / detail read-outs ---- */
+html[data-design="instrument"] .result-title { font-family: var(--mm-serif); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; }
+html[data-design="instrument"] .result-sub { font-family: var(--mm-mono); font-size: 11px; }
+html[data-design="instrument"] .result-r { font-family: var(--mm-serif); font-weight: 500; font-size: 36px; }
+html[data-design="instrument"] .result-usd { font-family: var(--mm-mono); }
+html[data-design="instrument"] .xp-earned-badge { font-family: var(--mm-mono); font-weight: 700; font-size: 12px; }
+html[data-design="instrument"] .coach-note-label {
+  font-family: var(--mm-mono);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+}
+html[data-design="instrument"] .rule-tile { border-radius: 10px; }
+html[data-design="instrument"] .offplan-origin-tag,
+html[data-design="instrument"] .direction-badge { font-family: var(--mm-mono); font-weight: 400; background: transparent; }
+html[data-design="instrument"] .offplan-banner { border: 1px solid rgba(255, 146, 105, 0.4); border-radius: 10px; }
+html[data-design="instrument"][data-theme="light"] .offplan-banner { border-color: rgba(153, 60, 29, 0.3); }
+html[data-design="instrument"] .fact-grid { border-radius: 10px; }
+html[data-design="instrument"] .readonly-value { background: var(--mm-input-bg); border: 1px solid var(--card-border); border-radius: 10px; font-family: var(--mm-mono); }
+html[data-design="instrument"] .save-confirm { font-family: var(--mm-mono); }
+html[data-design="instrument"] .secondary-button { border-radius: 10px; font-family: var(--mm-sans); border: 1px solid var(--card-border); background: transparent; }
+html[data-design="instrument"] .secondary-button:hover { border-color: var(--card-border-hover); }
+
+/* The select's chevron: the generic .text-input background shorthand above
+   would wipe it, and the original one is a fixed dark grey. */
+html[data-design="instrument"] select.text-input {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A6AFA9' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+}
+html[data-design="instrument"][data-theme="light"] select.text-input {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23565F58' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+}
+html[data-design="instrument"] select.text-input option { background: var(--mm-menu-bg); color: var(--text-primary); }
+
+/* ---- Manage Strategies ---- */
+.manage-panel-body { padding: 12px 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.manage-panel-body > .section-hint { margin: 0; }
+.manage-panel-body > .error-banner { margin-bottom: 0; }
+html[data-design="instrument"] .manage-panel .manage-row {
+  background: var(--mm-input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-design="instrument"] .manage-panel .empty-state {
+  background: transparent; border: 0; box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+html[data-design="instrument"] .manage-row-hint { font-family: var(--mm-mono); font-size: 11px; }
+/* The name (plus its EXAMPLE tag) wraps instead of ellipsis-clipping: inside the
+   panel there is less horizontal room, and the tag must never be cut off. */
+html[data-design="instrument"] .manage-row-name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+/* Deactivated rows keep the 0.55 fade from style.css; the switch itself must
+   also read as plainly "off" — a clearly visible neutral track, knob left. */
+html[data-design="instrument"] .toggle-switch { background: rgba(255, 255, 255, 0.22); border: 1px solid var(--card-border); }
+html[data-design="instrument"][data-theme="light"] .toggle-switch { background: rgba(29, 35, 31, 0.22); }
+html[data-design="instrument"] .toggle-switch.on { background: var(--teal); border-color: var(--teal); }
+html[data-design="instrument"] .toggle-knob { top: 2px; left: 2px; }
+html[data-design="instrument"] .toggle-switch.on .toggle-knob { left: 20px; }
+html[data-design="instrument"] .example-badge,
+html[data-design="instrument"] .example-badge-inline { font-family: var(--mm-mono); }
+
+/* --text-on-accent is dark ink in the Instrument dark theme (right for the
+   bright teal/purple fills). These sit on dark or saturated-dark surfaces
+   (photo scrim, success/warning-strong, coral-strong), where the original
+   white is what stays legible. */
+html[data-design="instrument"] .screenshot-thumb-remove,
+html[data-design="instrument"] .rule-tile-icon,
+html[data-design="instrument"] .danger-button { color: #FFFFFF; }
+
+/* On the dark theme the fail icon sits on bright amber, where white is weak. */
+html[data-design="instrument"] .rule-tile.fail .rule-tile-icon { color: #2A1E08; }
+html[data-design="instrument"][data-theme="light"] .rule-tile.fail .rule-tile-icon { color: #FFFFFF; }
