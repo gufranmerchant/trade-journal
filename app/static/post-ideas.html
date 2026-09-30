@@ -60,7 +60,7 @@
         </div>
       </div>
 
-      <div class="error-banner hidden" id="errorBanner"></div>
+      <div class="error-banner hidden" id="errorBanner" role="alert"></div>
 
       <button class="cta-button" id="generateBtn" type="button">Generate</button>
         </div>
@@ -158,12 +158,18 @@
         const topic = el("topicInput").value.trim();
         const platforms = selectedPlatforms();
 
+        el("topicInput").removeAttribute("aria-invalid");
         if (!topic) {
           showError("Enter a content topic.");
+          // Keep keyboard/screen-reader users where they need to fix it: the
+          // banner is role="alert" (announced), focus returns to the field.
+          el("topicInput").setAttribute("aria-invalid", "true");
+          el("topicInput").focus();
           return;
         }
         if (platforms.length === 0) {
           showError("Select at least one platform.");
+          document.querySelector("#platformPicker .chip").focus();
           return;
         }
 

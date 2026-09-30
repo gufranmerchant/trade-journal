@@ -65,19 +65,51 @@ class PostIdeasError(RuntimeError):
 FRIENDLY_ERROR_MESSAGE = "Something went wrong generating results — try again in a moment."
 
 
-SYSTEM_PROMPT = f"""You are a social media content strategist. Given a content \
+# Max words in each tag's reason, by how many platforms were selected. The
+# 850-token output cap is shared by every platform's block, so a one-platform
+# request can afford a real sentence of justification while the 5-platform
+# worst case has to stay tight. (Measured against the real model — see the
+# commit message for the token counts.)
+_REASON_WORDS_BY_PLATFORM_COUNT = {1: 14, 2: 12, 3: 10, 4: 8, 5: 8}
+
+
+def _tags_per_platform(n_platforms: int) -> int:
+    """4 tags per platform up to 3 platforms, 3 beyond that. With longer,
+    topic-specific reasons a 5-platform x 4-tag request measured 834 of the
+    850-token cap (one token of variance from a truncated, unparseable
+    response); 3 tags each keeps the worst case around 650."""
+    return TAGS_PER_PLATFORM if n_platforms <= 3 else TAGS_PER_PLATFORM - 1
+
+
+def _build_system_prompt(n_platforms: int) -> str:
+    words = _REASON_WORDS_BY_PLATFORM_COUNT.get(n_platforms, 8)
+    tags = _tags_per_platform(n_platforms)
+    return f"""You are a social media content strategist. Given a content \
 topic and a list of platforms, suggest, briefly and concisely:
 
 1. ideas: exactly 3 distinct post ideas for this topic. For each, give a \
 very short reason (max 8 words) why it would work.
 2. platform_tags: for EACH platform given in the user's message, exactly \
-{TAGS_PER_PLATFORM} hashtags or keywords relevant to this topic on that \
-platform, each with a very short reason (max 4 words). Use each platform's \
-own convention — "#" hashtags for Instagram/TikTok, plain SEO keyword \
-phrases (no "#") for LinkedIn/YouTube/Medium.
+{tags} hashtags or keywords relevant to this topic on that \
+platform. Use each platform's own convention - "#" hashtags for \
+Instagram/TikTok, plain SEO keyword phrases (no "#") for \
+LinkedIn/YouTube/Medium. Give each tag a reason of at most {words} words.
 
-Be specific to the given topic — never return generic placeholders. Keep \
-the whole response terse — short phrases, no extra commentary.
+REASON RULES (strict): every reason must be specific to THAT tag AND THIS \
+topic - say who searches or follows that exact tag and what they are after, \
+or what the tag signals about this topic. Test each reason: if it would \
+still read naturally next to a tag for a completely different topic, it is \
+wrong - rewrite it. Never use filler such as "drives discovery", "broad \
+reach", "core identifier", "boosts engagement", "popular hashtag", \
+"relevant audience", "niche appeal" or "general audience" (name the actual people and what they want instead). Do not open every reason with the same verb. Level of specificity wanted \
+(different topic - do not reuse): for topic "home bakery", tag \
+#sourdoughstarter -> "Beginners troubleshooting flat, sluggish starters". \
+For that reason to be possible, choose tags narrow enough to belong to THIS \
+topic; avoid catch-all tags (#tips, #lifestyle, #moneytips, #booklover, \
+"personal finance") unless you can tie them to a concrete angle of the topic.
+
+Be specific to the given topic - never return generic placeholders. Keep \
+the whole response terse - short phrases, no extra commentary.
 
 Return STRICT JSON, no prose, no fences:
 {{
@@ -193,7 +225,7 @@ def generate_post_ideas(topic: str, platforms) -> dict:
             reasoning_effort="none",
             max_completion_tokens=MAX_COMPLETION_TOKENS,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": _build_system_prompt(len(normalized_platforms))},
                 {"role": "user", "content": (
                     f"Topic: {topic}\nPlatforms (use these exact lowercase keys "
                     f"in platform_tags): {', '.join(normalized_platforms)} "

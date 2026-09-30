@@ -62,7 +62,28 @@ book topic or working title, suggest, briefly and concisely:
 Amazon search to find this book. Prefer long-tail, buyer-intent phrases \
 over single generic words. For each, give a short reason (max 8 words, not \
 a full sentence) a reader would search that phrase.
-2. competitors: 4-6 entries describing likely direct competitors on Amazon for this topic. ANTI-FABRICATION RULES (strict, non-negotiable): NEVER invent a book. A specific "Title by Author" entry is allowed ONLY if you are highly confident that exact book really exists and is by that author; if there is any doubt about the title, the author, or whether the pairing is real, do NOT write an author name or a title at all. In that case describe the competitor by pattern only, e.g. "Long-running village-set cozy mystery series with an amateur sleuth and a pet sidekick" or "Bestselling standalone domestic thriller with an unreliable narrator". Never attach a made-up title to a real author's name, never make up a series name, and never guess. Pattern-only entries are always better than a doubtful real-looking title. Competitors must match the topic's audience: an adult genre gets adult books, a children's topic gets children's books - never mix them. Do not repeat an entry.
+2. competitors: 4-6 entries describing likely direct competitors on Amazon
+for this topic, each as a PATTERN DESCRIPTION ONLY. ABSOLUTE RULE: never name
+any specific book title, series name or author - not even famous ones, not
+even "if you are sure". Your memory of exact titles and authors is not
+reliable enough and an invented title under a real author's name is harmful.
+Describe the type of book instead.
+GENRE-FIT RULES (strict): every entry must sit squarely inside the topic's
+own genre AND sub-genre. Check each entry against that genre's defining
+conventions - who drives the plot, the tone, how dark or violent it gets, the
+kind of setting. An entry whose lead character or tone belongs to a
+neighbouring genre is WRONG, e.g. a police-procedural lead or a serial-killer
+hunt in a cosy mystery, a grimdark tone in a comfort fantasy, a modern-day
+setting in a historical romance, a children's book for an adult genre. If you
+cannot think of an entry that truly fits, write fewer entries rather than
+stretch.
+SPECIFICITY RULES (strict): each entry must give at least two concrete
+distinguishing details that let an author judge how close a competitor is -
+the setting, the protagonist type (occupation, age, situation), the central
+hook or trope, the tone, or series-vs-standalone. No two entries may share
+the same details or be interchangeable boilerplate. Keep each entry under 25
+words. Do not use unverifiable claims such as "bestselling", "popular",
+"award-winning" or "new release".
 3. categories: 3-4 real Amazon Kindle/Book browse categories this book \
 could be listed under (each one distinct - no duplicates or \
 near-duplicates), using Amazon's actual category naming (e.g. "Kindle \

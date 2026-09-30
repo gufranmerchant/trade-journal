@@ -50,7 +50,17 @@
       </label>
       <input type="file" id="csvInput" accept=".csv,text/csv" class="hidden">
 
-      <div class="error-banner hidden" id="errorBanner"></div>
+      <p class="section-hint" id="csvGuidance">
+        Needs at least: a name column (Ad name / Campaign name / Ad set name), spend
+        (Total cost (USD) / Amount spent (USD)), Impressions, and Clicks. Add
+        Purchases and Sales (USD) &mdash; or ACOS &mdash; for CPA, ROAS and ACOS.
+        No export handy?
+        <a href="/static/samples/amazon-ads-sample.csv" download="amazon-ads-sample.csv"
+           id="sampleCsvLink">Download a sample CSV</a>
+        (includes a money-losing row, a winner and a no-sales row).
+      </p>
+
+      <div class="error-banner hidden" id="errorBanner" role="alert"></div>
 
       <button class="cta-button" id="analyzeBtn" type="button" disabled>Analyze</button>
         </div>

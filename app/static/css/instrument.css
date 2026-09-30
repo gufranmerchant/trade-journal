@@ -895,3 +895,9 @@ html[data-design="instrument"] .danger-link { font-family: var(--mm-sans); }
 /* The detail form was spaced by the old layout's flex gap; inside the panel the grid needs its own bottom space. */
 .detail-edit-section.term > .field-grid { margin-bottom: 18px; }
 .detail-edit-section.term > .error-banner { margin-bottom: 14px; }
+
+/* Inline links inside hint text (e.g. the Ads Analyser's "Download a sample CSV") use the
+   accent, not the browser's default blue; the guidance needs room above the button. */
+html[data-design="instrument"] .section-hint a { color: var(--teal); font-weight: 600; }
+html[data-design="instrument"] .section-hint a:hover { text-decoration: none; }
+.term-body > #csvGuidance { margin: 2px 0 16px; line-height: 1.55; }

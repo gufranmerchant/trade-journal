@@ -197,3 +197,22 @@ def test_parse_ads_csv_unrecognized_format_raises_with_both_platforms_mentioned(
     message = str(exc_info.value)
     assert "Meta" in message
     assert "Amazon" in message
+
+
+def test_sample_csv_parses_and_flags_the_intended_rows():
+    # app/static/samples/amazon-ads-sample.csv is offered for download on the
+    # Ads Analyser page; it must stay valid and keep exercising the flags.
+    from pathlib import Path
+    from app import ads_analyser
+
+    data = Path(ads_analyser.__file__).parent.joinpath("static", "samples", "amazon-ads-sample.csv").read_bytes()
+    rows = ads_analyser.flag_rows(ads_analyser.compute_metrics(ads_analyser.parse_ads_csv(data)))
+    flags = {r["name"]: r["flags"] for r in rows}
+
+    assert len(rows) == 7
+    assert len(flags["Village Sleuth #1 - Broad: mystery"]) == 1      # bleeder: high spend, low CTR, no sales
+    assert flags["Village Sleuth #1 - Broad: mystery"][0].startswith("High spend")
+    assert flags["Cozy Mystery Box Set - Product targeting"][0].startswith("ACOS outlier")
+    flagged = {name for name, f in flags.items() if f}
+    assert flagged == {"Village Sleuth #1 - Broad: mystery", "Cozy Mystery Box Set - Product targeting"}
+    assert flags["Bakery Mystery #3 - New launch"] == []              # no-sales row, tiny spend: not flagged

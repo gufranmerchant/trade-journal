@@ -185,3 +185,21 @@ def test_genuinely_broken_json_still_fails_with_friendly_error(raw):
     with pytest.raises(post_ideas.PostIdeasError) as exc_info:
         _generate_with_raw(raw)
     assert str(exc_info.value) == post_ideas.FRIENDLY_ERROR_MESSAGE
+
+
+def test_tag_count_and_reason_length_shrink_as_platforms_are_added():
+    # Longer, topic-specific reasons only fit the 850-token cap if the request
+    # gets smaller as platforms are added (5 platforms x 4 tags measured 834).
+    assert post_ideas._tags_per_platform(1) == post_ideas.TAGS_PER_PLATFORM
+    assert post_ideas._tags_per_platform(3) == post_ideas.TAGS_PER_PLATFORM
+    assert post_ideas._tags_per_platform(4) == post_ideas.TAGS_PER_PLATFORM - 1
+    assert post_ideas._tags_per_platform(5) == post_ideas.TAGS_PER_PLATFORM - 1
+    limits = [post_ideas._REASON_WORDS_BY_PLATFORM_COUNT[n] for n in range(1, 6)]
+    assert limits == sorted(limits, reverse=True)
+
+
+def test_system_prompt_demands_topic_specific_reasons_and_bans_filler():
+    prompt = post_ideas._build_system_prompt(3)
+    assert "specific to THAT tag AND THIS topic" in prompt
+    assert "general audience" in prompt and "drives discovery" in prompt
+    assert "exactly 4 hashtags" in prompt and "at most 10 words" in prompt

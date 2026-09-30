@@ -86,7 +86,7 @@
         </div>
       </div>
 
-      <div class="error-banner hidden" id="errorBanner"></div>
+      <div class="error-banner hidden" id="errorBanner" role="alert"></div>
 
       <button class="cta-button" id="calcBtn" type="button">Calculate</button>
 
@@ -169,21 +169,36 @@
         el("resultCard").classList.remove("hidden");
       }
 
+      // A type=number input reports "" both when empty and when it holds
+      // non-numeric text (validity.badInput), so check badInput to tell
+      // "empty" from "invalid" apart. min is the smallest allowed value.
+      const readNum = (id, min, inclusive) => {
+        const input = el(id);
+        if (input.validity.badInput) return { state: "invalid" };
+        if (input.value.trim() === "") return { state: "empty" };
+        const n = Number(input.value);
+        if (!isFinite(n) || (inclusive ? n < min : n <= min)) return { state: "invalid" };
+        return { state: "ok", value: n };
+      };
+
+      // The visible fields for the current format/plan, with the same limits
+      // calculate() enforces. Used to drop a stale result the moment any of
+      // them becomes invalid (it never rewrites what the user typed).
+      function anyVisibleInputInvalid() {
+        const checks = [readNum("listPrice", 0, false)];
+        if (format === "ebook" && plan === "70") {
+          checks.push(readNum("fileSize", 0, false), readNum("deliveryFee", 0, true));
+        } else if (format === "paperback") {
+          const rate = readNum("royaltyRate", 0, false);
+          if (rate.state === "ok" && rate.value > 100) rate.state = "invalid";
+          checks.push(rate, readNum("printingCost", 0, true));
+        }
+        return checks.some((c) => c.state === "invalid");
+      }
+
       async function calculate() {
         hideError();
         hideResult();
-
-        // A type=number input reports "" both when empty and when it holds
-        // non-numeric text (validity.badInput), so check badInput to tell
-        // "empty" from "invalid" apart. min is the smallest allowed value.
-        const readNum = (id, min, inclusive) => {
-          const input = el(id);
-          if (input.validity.badInput) return { state: "invalid" };
-          if (input.value.trim() === "") return { state: "empty" };
-          const n = Number(input.value);
-          if (!isFinite(n) || (inclusive ? n < min : n <= min)) return { state: "invalid" };
-          return { state: "ok", value: n };
-        };
         const fail = (results, emptyMsg, invalidMsg) => {
           if (results.some((r) => r.state === "invalid")) return showError(invalidMsg), true;
           if (results.some((r) => r.state === "empty")) return showError(emptyMsg), true;
@@ -246,6 +261,11 @@
         btn.addEventListener("click", () => selectPlan(btn.dataset.value));
       });
       el("calcBtn").addEventListener("click", calculate);
+      ["listPrice", "fileSize", "deliveryFee", "royaltyRate", "printingCost"].forEach((id) => {
+        el(id).addEventListener("input", () => {
+          if (anyVisibleInputInvalid()) hideResult();
+        });
+      });
     })();
   </script>
 </body>

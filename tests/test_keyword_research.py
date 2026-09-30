@@ -141,3 +141,11 @@ def test_genuinely_broken_json_still_fails_with_friendly_error(raw):
     with pytest.raises(keyword_research.KeywordResearchError) as exc_info:
         _research_with_raw(raw)
     assert str(exc_info.value) == keyword_research.FRIENDLY_ERROR_MESSAGE
+
+
+def test_competitor_prompt_is_pattern_only_and_genre_locked():
+    # Real-title naming proved unreliable (invented titles under real authors'
+    # names), so competitors are pattern descriptions only.
+    prompt = keyword_research.SYSTEM_PROMPT
+    assert "never name" in prompt and "any specific book title, series name or author" in prompt
+    assert "GENRE-FIT RULES" in prompt and "SPECIFICITY RULES" in prompt
