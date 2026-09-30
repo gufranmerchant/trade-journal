@@ -26,7 +26,13 @@
   const iconSun = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
   const iconMoon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>`;
 
+  // The /marketer pages (<html data-app="marketer">) default to dark when
+  // there's no stored choice, rather than following the OS — every other
+  // page keeps following the OS as before.
+  const isMarketer = () => document.documentElement.getAttribute("data-app") === "marketer";
+
   function systemTheme() {
+    if (isMarketer()) return "dark";
     return darkMediaQuery.matches ? "dark" : "light";
   }
 
@@ -41,7 +47,10 @@
       btn.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
     }
     const meta = document.getElementById("themeColorMeta");
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#171613" : "#1D9E75");
+    if (meta) {
+      const colors = isMarketer() ? { dark: "#0E1210", light: "#FAF8F1" } : { dark: "#171613", light: "#1D9E75" };
+      meta.setAttribute("content", colors[theme]);
+    }
   }
 
   // explicitTheme is the user's stored choice ("light"/"dark"), or null to
@@ -62,6 +71,8 @@
     applyTheme(next);
   }
 
+  let themeListenerAdded = false;
+
   function wireThemeToggle() {
     let stored = null;
     try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
@@ -70,6 +81,8 @@
     const btn = document.getElementById("themeToggleBtn");
     if (btn) btn.addEventListener("click", toggleTheme);
 
+    if (themeListenerAdded) return;
+    themeListenerAdded = true;
     darkMediaQuery.addEventListener("change", () => {
       let current = null;
       try { current = localStorage.getItem(THEME_KEY); } catch (e) {}
@@ -135,5 +148,54 @@
     return wrap;
   }
 
-  window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher };
+  // ---------------------------------------------------------------------
+  // Marketer Mirror shell — the one place the /marketer pages' header
+  // (logo mark + wordmark, theme toggle, tool switcher, optional back link)
+  // and "Free. No sign-up." footer live, so the 7 pages don't each carry
+  // their own copy. Call it from a script placed directly after
+  // <div id="mmHeader"></div> (top of .app) so the header exists before
+  // first paint. opts.back = {href, label} adds a back arrow.
+  // ---------------------------------------------------------------------
+  const iconBack = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>`;
+  // Two mirrored arcs meeting at top/bottom, with a dot at the centre.
+  const iconMirror = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.5C5.5 7 5.5 17 12 20.5"/><path d="M12 3.5C18.5 7 18.5 17 12 20.5"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>`;
+
+  function mountMarketerShell(opts) {
+    const o = opts || {};
+    markLastUsed("marketer");
+
+    const slot = document.getElementById("mmHeader");
+    if (slot) {
+      const backLink = o.back
+        ? `<a class="icon-button" href="${o.back.href}" aria-label="${o.back.label}">${iconBack}</a>`
+        : "";
+      slot.outerHTML =
+        `<header class="mm-header">` +
+          `<div class="mm-header-left">${backLink}` +
+            `<a class="mm-brand" href="/marketer" aria-label="Marketer Mirror home">` +
+              `<span class="mm-logo">${iconMirror}</span>` +
+              `<span class="mm-brand-name">Marketer Mirror</span>` +
+            `</a>` +
+          `</div>` +
+          `<div class="topbar-actions" id="topbarActions">` +
+            `<button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to light mode"></button>` +
+          `</div>` +
+        `</header>`;
+      wireThemeToggle(); // the toggle button only exists now
+      mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
+    }
+
+    const addFooter = () => {
+      const app = document.querySelector(".app");
+      if (!app || app.querySelector(".mm-footer")) return;
+      const footer = document.createElement("footer");
+      footer.className = "mm-footer";
+      footer.textContent = "Free. No sign-up. Just a straight answer.";
+      app.appendChild(footer);
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", addFooter);
+    else addFooter();
+  }
+
+  window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher, mountMarketerShell };
 })();

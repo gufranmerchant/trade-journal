@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-app="marketer">
 <head>
   <meta charset="UTF-8">
   <script>
@@ -14,32 +14,35 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Post Idea Finder — Marketer Mirror</title>
-  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
+  <meta name="theme-color" content="#0E1210" id="themeColorMeta">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:wght@500;600&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/static/css/marketer.css">
 </head>
 <body>
   <div class="app">
-    <header class="topbar">
-      <a class="icon-button" href="/marketer/social" aria-label="Back to Social">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5"></path>
-          <path d="M12 19l-7-7 7-7"></path>
-        </svg>
-      </a>
-      <span class="topbar-title">Post Idea Finder</span>
-      <div class="topbar-actions" id="topbarActions">
-        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
-      </div>
-    </header>
+    <div id="mmHeader"></div>
+    <script src="/static/js/nav.js"></script>
+    <script>MirrorNav.mountMarketerShell({ back: { href: "/marketer/social", label: "Back to Social" } });</script>
 
     <main class="content">
+      <section class="mm-hero mm-hero--compact">
+        <span class="mm-badge mm-badge--purple">Tool 04 &middot; social</span>
+        <h1 class="mm-h1">Post Idea Finder</h1>
+      </section>
+
       <p class="page-lede">
         Enter a content topic for AI-researched post ideas and platform
         hashtags/keywords to jumpstart your content plan — always verify
         against the platform before using them in a real post or campaign.
       </p>
 
+      <section class="term" aria-label="Input">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">post_ideas.exe</span></div>
+        <div class="term-body">
       <div class="field-block">
         <label class="field-label" for="topicInput">Content topic</label>
         <input class="text-input" type="text" id="topicInput" maxlength="300"
@@ -60,13 +63,16 @@
       <div class="error-banner hidden" id="errorBanner"></div>
 
       <button class="cta-button" id="generateBtn" type="button">Generate</button>
+        </div>
+      </section>
 
       <div class="loading-state hidden" id="loadingView" aria-live="polite">
         <div class="spinner" aria-hidden="true"></div>
         <p class="loading-title">Generating…</p>
       </div>
 
-      <div class="hidden results-stack" id="resultsWrap">
+      <div class="hidden results-stack term" id="resultsWrap" aria-live="polite">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">results.out</span></div>
         <div>
           <div class="section-label">Post ideas</div>
           <div class="idea-list" id="ideaList"></div>
@@ -77,11 +83,6 @@
     </main>
   </div>
 
-  <script src="/static/js/nav.js"></script>
-  <script>
-    MirrorNav.markLastUsed("marketer");
-    MirrorNav.mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
-  </script>
 
   <script>
     (() => {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-app="marketer">
 <head>
   <meta charset="UTF-8">
   <script>
@@ -14,65 +14,63 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Marketer Mirror</title>
-  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
+  <meta name="theme-color" content="#0E1210" id="themeColorMeta">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:wght@500;600&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/static/css/marketer.css">
 </head>
 <body>
   <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-dot"></span>
-        <span class="brand-name">Marketer Mirror</span>
-      </div>
-      <div class="topbar-actions" id="topbarActions">
-        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
-      </div>
-    </header>
+    <div id="mmHeader"></div>
+    <script src="/static/js/nav.js"></script>
+    <script>MirrorNav.mountMarketerShell();</script>
 
     <main class="content">
-      <p class="page-lede">Pick a lane to get started.</p>
+      <section class="mm-hero">
+        <span class="mm-badge">Status: honest</span>
+        <h1 class="mm-h1">Marketing. No flattery.</h1>
+        <p class="mm-hero-sub">Pick a lane to get started &mdash; break-even maths, ad reports, keyword research and post ideas for authors and creators.</p>
+      </section>
 
-      <div class="tool-list">
-        <a class="card tool-card" href="/marketer/books">
-          <span class="tool-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
-          </span>
-          <span class="tool-card-body">
-            <span class="tool-card-name">Books</span>
-            <span class="tool-card-desc">KDP break-even math, ads report analysis, and keyword/category research.</span>
-          </span>
-          <span class="tool-card-chevron">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-          </span>
+      <nav class="mm-catalog" aria-label="All tools">
+        <a class="mm-chip" href="/marketer/books/kdp-breakeven"><span class="mm-chip-idx">01</span>break_even_calc</a>
+        <a class="mm-chip" href="/marketer/books/ads-analyser"><span class="mm-chip-idx">02</span>ads_analyser</a>
+        <a class="mm-chip" href="/marketer/books/keyword-research"><span class="mm-chip-idx">03</span>keyword_research</a>
+        <a class="mm-chip" href="/marketer/social/post-ideas"><span class="mm-chip-idx">04</span>post_ideas</a>
+        <span class="mm-chip mm-chip--pending">05 &middot; pending&hellip;</span>
+      </nav>
+
+      <div class="mm-lanes">
+        <a class="term term-card" href="/marketer/books">
+          <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">books.exe</span></div>
+          <div class="term-body">
+            <span class="term-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></span>
+            <span class="term-card-main">
+              <span class="term-card-title">Books</span>
+              <span class="term-card-desc">KDP break-even math, ads report analysis, and keyword/category research.</span>
+              <span class="term-card-meta">3 tools &middot; kdp / ads / keywords</span>
+            </span>
+            <span class="term-card-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
         </a>
-
-        <a class="card tool-card" href="/marketer/social">
-          <span class="tool-card-icon purple">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>
-          </span>
-          <span class="tool-card-body">
-            <span class="tool-card-name">Social</span>
-            <span class="tool-card-desc">Tools for social content and creators.</span>
-          </span>
-          <span class="tool-card-chevron">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-          </span>
+        <a class="term term-card term-card--purple" href="/marketer/social">
+          <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">social.exe</span></div>
+          <div class="term-body">
+            <span class="term-card-icon purple" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg></span>
+            <span class="term-card-main">
+              <span class="term-card-title">Social</span>
+              <span class="term-card-desc">Tools for social content and creators.</span>
+              <span class="term-card-meta">1 tool &middot; post ideas</span>
+            </span>
+            <span class="term-card-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
         </a>
       </div>
     </main>
   </div>
 
-  <script src="/static/js/nav.js"></script>
-  <script>
-    // Marketer Mirror is still one "tool" from the top-level home.html picker's
-    // point of view (see MirrorNav.markLastUsed/getLastUsed) — landing on this
-    // lane picker, or on either lane hub below it, all count as "using
-    // marketer". The Books/Social split below is a level of navigation home.html
-    // doesn't know about and doesn't need to: it only ever offers a way back to
-    // whichever top-level tool you used last, not a specific lane within it.
-    MirrorNav.markLastUsed("marketer");
-    MirrorNav.mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
-  </script>
 </body>
 </html>
