@@ -1,19 +1,20 @@
-/* "Instrument" visual system for the /marketer pages only.
+/* "Instrument" visual system — shared by the /marketer pages and the root "/"
+   tool picker (home.html).
 
-   Loaded AFTER style.css and scoped to <html data-app="marketer">, so the
-   trading app and home picker (which share style.css) are untouched. It
-   works mostly by re-pointing style.css's existing design tokens, so every
-   class the tool pages already use (field-block, cta-button, fact-grid, ...)
-   picks up the new look without markup or JS changes; the rules below it
-   only add what tokens can't express (fonts, grid background, terminal-window
-   chrome, header/hero).
+   Loaded AFTER style.css and scoped to <html data-design="instrument">, so the
+   trading app's own pages (which share style.css) are untouched. It works
+   mostly by re-pointing style.css's existing design tokens, so every class
+   the pages already use (field-block, cta-button, fact-grid, ...) picks up
+   the new look without markup or JS changes; the rules below it only add
+   what tokens can't express (fonts, grid background, terminal-window chrome,
+   header/hero).
 
    Dark is the default on these pages (see MirrorNav's default-theme handling);
    an explicit data-theme="light" switches to the light set. The :root
    selector is repeated in each block purely to out-specify style.css's own
    `:root[data-theme="dark"]` / prefers-color-scheme blocks. */
 
-html[data-app="marketer"]:root {
+html[data-design="instrument"]:root {
   --bg: #0E1210;
   --card: rgba(255, 255, 255, 0.025);
   --card-border: rgba(255, 255, 255, 0.14);
@@ -60,7 +61,7 @@ html[data-app="marketer"]:root {
   color-scheme: dark;
 }
 
-html[data-app="marketer"][data-theme="light"]:root {
+html[data-design="instrument"][data-theme="light"]:root {
   --bg: #FAF8F1;
   --card: rgba(255, 255, 255, 0.65);
   --card-border: rgba(29, 35, 31, 0.12);
@@ -107,14 +108,14 @@ html[data-app="marketer"][data-theme="light"]:root {
   color-scheme: light;
 }
 
-html[data-app="marketer"] {
+html[data-design="instrument"] {
   --mm-serif: "Newsreader", Georgia, serif;
   --mm-mono: "Space Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --mm-sans: "Manrope", system-ui, sans-serif;
 }
 
 /* ---------- Page canvas: grid + the one hero glow ---------- */
-html[data-app="marketer"] body {
+html[data-design="instrument"] body {
   font-family: var(--mm-sans);
   background-color: var(--bg);
   background-image:
@@ -126,7 +127,7 @@ html[data-app="marketer"] body {
 }
 
 /* The single glow: one soft teal ellipse above the hero, nowhere else. */
-html[data-app="marketer"] body::before {
+html[data-design="instrument"] body::before {
   content: "";
   position: absolute;
   top: -140px;
@@ -139,13 +140,13 @@ html[data-app="marketer"] body::before {
   z-index: 0;
 }
 
-html[data-app="marketer"] .app {
+html[data-design="instrument"] .app {
   position: relative;
   z-index: 1;
   max-width: 760px;
 }
 
-html[data-app="marketer"] .content { padding: 8px 20px 28px; gap: 20px; }
+html[data-design="instrument"] .content { padding: 8px 20px 28px; gap: 20px; }
 
 /* ---------- Header ---------- */
 .mm-header {
@@ -176,7 +177,7 @@ html[data-app="marketer"] .content { padding: 8px 20px 28px; gap: 20px; }
   justify-content: center;
   flex-shrink: 0;
 }
-html[data-app="marketer"][data-theme="light"] .mm-logo { border-color: rgba(21, 138, 99, 0.3); }
+html[data-design="instrument"][data-theme="light"] .mm-logo { border-color: rgba(21, 138, 99, 0.3); }
 .mm-logo svg { width: 20px; height: 20px; }
 .mm-brand-name {
   font-family: var(--mm-serif);
@@ -186,8 +187,8 @@ html[data-app="marketer"][data-theme="light"] .mm-logo { border-color: rgba(21, 
   white-space: nowrap;
 }
 
-html[data-app="marketer"] .topbar-actions { display: flex; align-items: center; gap: 8px; }
-html[data-app="marketer"] .icon-button {
+html[data-design="instrument"] .topbar-actions { display: flex; align-items: center; gap: 8px; }
+html[data-design="instrument"] .icon-button {
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -197,20 +198,20 @@ html[data-app="marketer"] .icon-button {
   text-decoration: none;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-html[data-app="marketer"] .icon-button:hover {
+html[data-design="instrument"] .icon-button:hover {
   background: var(--teal-tint);
   border-color: var(--card-border-hover);
   color: var(--teal);
 }
-html[data-app="marketer"] :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+html[data-design="instrument"] :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
-html[data-app="marketer"] .nav-switcher-menu {
+html[data-design="instrument"] .nav-switcher-menu {
   background: var(--mm-menu-bg);
   backdrop-filter: none;
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
-html[data-app="marketer"] .nav-switcher-link { font-family: var(--mm-sans); font-weight: 600; }
+html[data-design="instrument"] .nav-switcher-link { font-family: var(--mm-sans); font-weight: 600; }
 
 /* ---------- Hero ---------- */
 .mm-hero { padding: 28px 0 4px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
@@ -230,7 +231,7 @@ html[data-app="marketer"] .nav-switcher-link { font-family: var(--mm-sans); font
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-html[data-app="marketer"][data-theme="light"] .mm-badge { border-color: rgba(21, 138, 99, 0.4); }
+html[data-design="instrument"][data-theme="light"] .mm-badge { border-color: rgba(21, 138, 99, 0.4); }
 .mm-badge::before {
   content: "";
   width: 6px;
@@ -243,7 +244,7 @@ html[data-app="marketer"][data-theme="light"] .mm-badge { border-color: rgba(21,
   border-color: rgba(169, 150, 255, 0.45);
   background: var(--purple-tint);
 }
-html[data-app="marketer"][data-theme="light"] .mm-badge--purple { border-color: rgba(124, 100, 214, 0.4); }
+html[data-design="instrument"][data-theme="light"] .mm-badge--purple { border-color: rgba(124, 100, 214, 0.4); }
 
 .mm-h1 {
   font-family: var(--mm-serif);
@@ -279,7 +280,7 @@ html[data-app="marketer"][data-theme="light"] .mm-badge--purple { border-color: 
   text-decoration: none;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
-html[data-app="marketer"][data-theme="light"] .mm-chip { border-color: rgba(21, 138, 99, 0.4); }
+html[data-design="instrument"][data-theme="light"] .mm-chip { border-color: rgba(21, 138, 99, 0.4); }
 a.mm-chip:hover { border-color: var(--teal); background: var(--teal-tint-hover); }
 .mm-chip-idx { color: var(--teal); }
 .mm-chip--pending {
@@ -290,7 +291,7 @@ a.mm-chip:hover { border-color: var(--teal); background: var(--teal-tint-hover);
 }
 
 /* ---------- Terminal-window card / panel ---------- */
-html[data-app="marketer"] .card,
+html[data-design="instrument"] .card,
 .term {
   background: var(--card);
   -webkit-backdrop-filter: blur(var(--mm-blur));
@@ -345,9 +346,9 @@ a.term-card:focus-visible { transform: translateY(-3px); border-color: var(--car
   justify-content: center;
   flex-shrink: 0;
 }
-html[data-app="marketer"][data-theme="light"] .term-card-icon { border-color: rgba(21, 138, 99, 0.3); }
+html[data-design="instrument"][data-theme="light"] .term-card-icon { border-color: rgba(21, 138, 99, 0.3); }
 .term-card-icon.purple { background: var(--purple-tint); border-color: rgba(169, 150, 255, 0.3); color: var(--purple); }
-html[data-app="marketer"][data-theme="light"] .term-card-icon.purple { border-color: rgba(124, 100, 214, 0.3); }
+html[data-design="instrument"][data-theme="light"] .term-card-icon.purple { border-color: rgba(124, 100, 214, 0.3); }
 .term-card-icon svg { width: 22px; height: 22px; }
 .term-card-main { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
 .term-card-title {
@@ -374,7 +375,7 @@ a.term-card:hover .term-card-chevron { color: var(--teal); transform: translateX
 
 .mm-lanes, .mm-tools { display: flex; flex-direction: column; gap: 16px; }
 
-html[data-app="marketer"] .section-label {
+html[data-design="instrument"] .section-label {
   font-family: var(--mm-mono);
   font-size: 11px;
   font-weight: 400;
@@ -382,17 +383,17 @@ html[data-app="marketer"] .section-label {
   text-transform: uppercase;
   color: var(--text-muted);
 }
-html[data-app="marketer"] .section-label::before { content: "// "; color: var(--teal); }
-html[data-app="marketer"] .term-card-section { margin-top: 4px; }
+html[data-design="instrument"] .section-label::before { content: "// "; color: var(--teal); }
+html[data-design="instrument"] .term-card-section { margin-top: 4px; }
 
 /* ---------- Tool pages: form panel + results ---------- */
-html[data-app="marketer"] .page-lede {
+html[data-design="instrument"] .page-lede {
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-secondary);
   margin: 0 0 6px;
 }
-html[data-app="marketer"] .field-label {
+html[data-design="instrument"] .field-label {
   font-family: var(--mm-mono);
   font-size: 11px;
   font-weight: 400;
@@ -400,26 +401,26 @@ html[data-app="marketer"] .field-label {
   text-transform: uppercase;
   color: var(--text-secondary);
 }
-html[data-app="marketer"] .text-input {
+html[data-design="instrument"] .text-input {
   border: 1px solid var(--card-border);
   border-radius: 10px;
   background: var(--mm-input-bg);
   color: var(--text-primary);
   font-family: var(--mm-sans);
 }
-html[data-app="marketer"] .text-input::placeholder { color: var(--text-muted); opacity: 1; }
-html[data-app="marketer"] .text-input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-tint); }
+html[data-design="instrument"] .text-input::placeholder { color: var(--text-muted); opacity: 1; }
+html[data-design="instrument"] .text-input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-tint); }
 
-html[data-app="marketer"] .cta-button {
+html[data-design="instrument"] .cta-button {
   border-radius: 10px;
   font-family: var(--mm-sans);
   font-weight: 800;
   box-shadow: none;
 }
-html[data-app="marketer"] .cta-button:hover { background: var(--teal); filter: brightness(1.1); }
+html[data-design="instrument"] .cta-button:hover { background: var(--teal); filter: brightness(1.1); }
 
-html[data-app="marketer"] .segment-btn,
-html[data-app="marketer"] .chip {
+html[data-design="instrument"] .segment-btn,
+html[data-design="instrument"] .chip {
   border-radius: 10px;
   border: 1px solid var(--card-border);
   background: var(--mm-input-bg);
@@ -427,11 +428,11 @@ html[data-app="marketer"] .chip {
   font-family: var(--mm-sans);
   font-weight: 700;
 }
-html[data-app="marketer"] .chip.chip-static { font-weight: 600; cursor: default; }
+html[data-design="instrument"] .chip.chip-static { font-weight: 600; cursor: default; }
 /* style.css gives .chip flex-shrink: 0 (right for short filter pills), so a long
    competitor/category entry sat on one line and was clipped by the results
    panel. Static chips hold sentences and category paths: let them shrink and wrap. */
-html[data-app="marketer"] .chip.chip-static {
+html[data-design="instrument"] .chip.chip-static {
   flex-shrink: 1;
   min-width: 0;
   max-width: 100%;
@@ -441,52 +442,52 @@ html[data-app="marketer"] .chip.chip-static {
   line-height: 1.45;
   border-radius: 10px;
 }
-html[data-app="marketer"] .segment-btn:hover,
-html[data-app="marketer"] .chip:hover { border-color: var(--card-border-hover); }
-html[data-app="marketer"] .segment-btn.active,
-html[data-app="marketer"] .chip.active {
+html[data-design="instrument"] .segment-btn:hover,
+html[data-design="instrument"] .chip:hover { border-color: var(--card-border-hover); }
+html[data-design="instrument"] .segment-btn.active,
+html[data-design="instrument"] .chip.active {
   background: var(--teal-tint);
   border-color: var(--teal);
   color: var(--teal);
 }
 
-html[data-app="marketer"] .error-banner,
-html[data-app="marketer"] .warning-banner {
+html[data-design="instrument"] .error-banner,
+html[data-design="instrument"] .warning-banner {
   border-radius: 10px;
   border: 1px solid currentColor;
   font-family: var(--mm-sans);
 }
-html[data-app="marketer"] .error-banner { border-color: rgba(255, 138, 107, 0.35); }
-html[data-app="marketer"] .warning-banner { border-color: rgba(245, 180, 78, 0.35); }
+html[data-design="instrument"] .error-banner { border-color: rgba(255, 138, 107, 0.35); }
+html[data-design="instrument"] .warning-banner { border-color: rgba(245, 180, 78, 0.35); }
 
-html[data-app="marketer"] .file-drop {
+html[data-design="instrument"] .file-drop {
   display: block;  /* it's a <label>; no longer a flex child of .content, so it must be blockified */
   margin-bottom: 14px;
   border: 1.5px dashed var(--card-border);
   background: var(--mm-input-bg);
   border-radius: 10px;
 }
-html[data-app="marketer"] .file-drop:hover { border-color: var(--teal); }
+html[data-design="instrument"] .file-drop:hover { border-color: var(--teal); }
 
-html[data-app="marketer"] .spinner { border-color: var(--teal-tint); border-top-color: var(--teal); }
-html[data-app="marketer"] .loading-state { padding: 48px 24px; }
-html[data-app="marketer"] .loading-title { font-family: var(--mm-mono); font-size: 12px; font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+html[data-design="instrument"] .spinner { border-color: var(--teal-tint); border-top-color: var(--teal); }
+html[data-design="instrument"] .loading-state { padding: 48px 24px; }
+html[data-design="instrument"] .loading-title { font-family: var(--mm-mono); font-size: 12px; font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
 
 /* Results panels: the existing result containers (#resultCard, #resultsWrap)
    themselves become terminal windows — a .term-bar is their first child. */
-html[data-app="marketer"] .fact-grid.term {
+html[data-design="instrument"] .fact-grid.term {
   padding: 0 0 18px;
   gap: 16px 12px;
 }
 .fact-grid.term > .term-bar { grid-column: 1 / -1; }
 .fact-grid.term > .fact-item { padding: 0 18px; }
-html[data-app="marketer"] .fact-label {
+html[data-design="instrument"] .fact-label {
   font-family: var(--mm-mono);
   font-weight: 400;
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
-html[data-app="marketer"] .fact-value {
+html[data-design="instrument"] .fact-value {
   font-family: var(--mm-serif);
   font-size: 28px;
   font-weight: 500;
@@ -494,31 +495,52 @@ html[data-app="marketer"] .fact-value {
   color: var(--text-primary);
 }
 
-html[data-app="marketer"] .results-stack.term { padding: 0 0 18px; gap: 20px; }
+html[data-design="instrument"] .results-stack.term { padding: 0 0 18px; gap: 20px; }
 .results-stack.term > :not(.term-bar) { margin-inline: 18px; }
 
-html[data-app="marketer"] .idea-card {
+html[data-design="instrument"] .idea-card {
   border-radius: 10px;
   border: 1px solid var(--card-border);
   background: var(--mm-input-bg);
 }
-html[data-app="marketer"] .idea-card-number {
+html[data-design="instrument"] .idea-card-number {
   border-radius: 8px;
   font-family: var(--mm-mono);
   font-weight: 700;
   background: var(--teal-tint);
   color: var(--teal);
 }
-html[data-app="marketer"] .idea-card-title { font-weight: 700; }
-html[data-app="marketer"] .idea-card-rationale { color: var(--text-secondary); }
+html[data-design="instrument"] .idea-card-title { font-weight: 700; }
+html[data-design="instrument"] .idea-card-rationale { color: var(--text-secondary); }
 
-html[data-app="marketer"] .ads-table-wrap { border: none; border-radius: 0; }
-html[data-app="marketer"] .ads-table th { font-family: var(--mm-mono); font-weight: 400; letter-spacing: 0.06em; }
-html[data-app="marketer"] .ads-table td { color: var(--text-primary); }
+html[data-design="instrument"] .ads-table-wrap { border: none; border-radius: 0; }
+html[data-design="instrument"] .ads-table th { font-family: var(--mm-mono); font-weight: 400; letter-spacing: 0.06em; }
+html[data-design="instrument"] .ads-table td { color: var(--text-primary); }
 /* style.css's `.ads-table td { white-space: nowrap }` out-specifies .ads-row-name's
    own `white-space: normal`, so long campaign names never wrapped and stretched
    the table. Let the name cell wrap within a bounded width. */
-html[data-app="marketer"] .ads-table td.ads-row-name { white-space: normal; min-width: 170px; max-width: 240px; overflow-wrap: anywhere; }
+html[data-design="instrument"] .ads-table td.ads-row-name { white-space: normal; min-width: 170px; max-width: 240px; overflow-wrap: anywhere; }
+
+/* Root picker (home.html) keeps style.css's `.tool-card`/`.tool-card-badge`
+   class names on its cards because its recency script (badge + reorder) queries
+   them. Neutralise the old card box (padding/flex) so the terminal chrome owns
+   the layout, and restyle the "Continue where you left off" badge. */
+html[data-design="instrument"] a.term-card.tool-card { padding: 0; gap: 0; display: block; }
+html[data-design="instrument"] .tool-card-badge {
+  align-self: flex-start;
+  margin: 0 0 4px;
+  padding: 3px 9px;
+  border: 1px solid rgba(45, 212, 166, 0.45);
+  border-radius: 999px;
+  background: var(--teal-tint);
+  color: var(--teal);
+  font-family: var(--mm-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+html[data-design="instrument"][data-theme="light"] .tool-card-badge { border-color: rgba(21, 138, 99, 0.4); }
 
 /* ---------- Footer ---------- */
 .mm-footer {
@@ -531,7 +553,7 @@ html[data-app="marketer"] .ads-table td.ads-row-name { white-space: normal; min-
 
 @media (max-width: 480px) {
   .mm-header { padding: 14px 16px 4px; }
-  html[data-app="marketer"] .content { padding: 8px 16px 24px; }
+  html[data-design="instrument"] .content { padding: 8px 16px 24px; }
   .mm-brand-name { font-size: 18px; }
   .term-card .term-body { padding: 16px; }
   .term-card-title { font-size: 20px; }

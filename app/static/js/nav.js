@@ -26,13 +26,14 @@
   const iconSun = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
   const iconMoon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>`;
 
-  // The /marketer pages (<html data-app="marketer">) default to dark when
-  // there's no stored choice, rather than following the OS — every other
-  // page keeps following the OS as before.
-  const isMarketer = () => document.documentElement.getAttribute("data-app") === "marketer";
+  // Pages using the Instrument design system (<html data-design="instrument">:
+  // the /marketer pages and the root picker) default to dark when there's no
+  // stored choice, rather than following the OS — every other page keeps
+  // following the OS as before.
+  const isInstrument = () => document.documentElement.getAttribute("data-design") === "instrument";
 
   function systemTheme() {
-    if (isMarketer()) return "dark";
+    if (isInstrument()) return "dark";
     return darkMediaQuery.matches ? "dark" : "light";
   }
 
@@ -48,7 +49,7 @@
     }
     const meta = document.getElementById("themeColorMeta");
     if (meta) {
-      const colors = isMarketer() ? { dark: "#0E1210", light: "#FAF8F1" } : { dark: "#171613", light: "#1D9E75" };
+      const colors = isInstrument() ? { dark: "#0E1210", light: "#FAF8F1" } : { dark: "#171613", light: "#1D9E75" };
       meta.setAttribute("content", colors[theme]);
     }
   }
@@ -149,20 +150,22 @@
   }
 
   // ---------------------------------------------------------------------
-  // Marketer Mirror shell — the one place the /marketer pages' header
-  // (logo mark + wordmark, theme toggle, tool switcher, optional back link)
-  // and "Free. No sign-up." footer live, so the 7 pages don't each carry
-  // their own copy. Call it from a script placed directly after
-  // <div id="mmHeader"></div> (top of .app) so the header exists before
-  // first paint. opts.back = {href, label} adds a back arrow.
+  // Instrument shell — the one place the header (logo mark + wordmark, theme
+  // toggle, tool switcher, optional back link) and "Free. No sign-up."
+  // footer live, so the 8 pages don't each carry their own copy. Call it
+  // from a script placed directly after <div id="mmHeader"></div> (top of
+  // .app) so the header exists before first paint. opts.back = {href, label}
+  // adds a back arrow. opts.home = true is the root picker: "Mirror" wordmark
+  // linking to "/", theme toggle only (no switcher), and it does NOT record
+  // "marketer" as the last-used tool.
   // ---------------------------------------------------------------------
   const iconBack = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>`;
   // Two mirrored arcs meeting at top/bottom, with a dot at the centre.
   const iconMirror = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.5C5.5 7 5.5 17 12 20.5"/><path d="M12 3.5C18.5 7 18.5 17 12 20.5"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>`;
 
-  function mountMarketerShell(opts) {
+  function mountShell(opts) {
     const o = opts || {};
-    markLastUsed("marketer");
+    if (!o.home) markLastUsed("marketer");
 
     const slot = document.getElementById("mmHeader");
     if (slot) {
@@ -172,9 +175,9 @@
       slot.outerHTML =
         `<header class="mm-header">` +
           `<div class="mm-header-left">${backLink}` +
-            `<a class="mm-brand" href="/marketer" aria-label="Marketer Mirror home">` +
+            `<a class="mm-brand" href="${o.home ? "/" : "/marketer"}" aria-label="${o.home ? "Mirror home" : "Marketer Mirror home"}">` +
               `<span class="mm-logo">${iconMirror}</span>` +
-              `<span class="mm-brand-name">Marketer Mirror</span>` +
+              `<span class="mm-brand-name">${o.home ? "Mirror" : "Marketer Mirror"}</span>` +
             `</a>` +
           `</div>` +
           `<div class="topbar-actions" id="topbarActions">` +
@@ -182,7 +185,7 @@
           `</div>` +
         `</header>`;
       wireThemeToggle(); // the toggle button only exists now
-      mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
+      if (!o.home) mountSwitcher(document.getElementById("topbarActions"), { active: "marketer" });
     }
 
     const addFooter = () => {
@@ -197,5 +200,5 @@
     else addFooter();
   }
 
-  window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher, mountMarketerShell };
+  window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher, mountShell };
 })();

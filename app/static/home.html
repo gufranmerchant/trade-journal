@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-design="instrument">
 <head>
   <meta charset="UTF-8">
   <script>
@@ -14,56 +14,59 @@
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Mirror</title>
-  <meta name="theme-color" content="#1D9E75" id="themeColorMeta">
+  <meta name="theme-color" content="#0E1210" id="themeColorMeta">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:wght@500;600&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/static/css/instrument.css">
 </head>
 <body>
   <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-dot"></span>
-        <span class="brand-name">Mirror</span>
-      </div>
-      <div class="topbar-actions">
-        <button class="icon-button" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"></button>
-      </div>
-    </header>
+    <div id="mmHeader"></div>
+    <script src="/static/js/nav.js"></script>
+    <script>MirrorNav.mountShell({ home: true });</script>
 
     <main class="content">
-      <p class="page-lede">Pick a tool to get started.</p>
+      <section class="mm-hero mm-hero--compact">
+        <span class="mm-badge">Status: honest</span>
+        <h1 class="mm-h1">Pick a tool to get started.</h1>
+      </section>
 
       <div class="tool-list" id="toolList">
-        <a class="card tool-card" data-tool="trading" href="/trading">
-          <span class="tool-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-          </span>
-          <span class="tool-card-body">
-            <span class="tool-card-name">Trading Mirror</span>
-            <span class="tool-card-desc">Log trades from a screenshot and get judged against your own strategy rules.</span>
-          </span>
-          <span class="tool-card-chevron">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-          </span>
+        <a class="term term-card tool-card" data-tool="trading" href="/trading">
+          <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">trading.exe</span></div>
+          <div class="term-body">
+            <span class="term-card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            </span>
+            <span class="term-card-main tool-card-body">
+              <span class="term-card-title tool-card-name">Trading Mirror</span>
+              <span class="term-card-desc tool-card-desc">Log trades from a screenshot and get judged against your own strategy rules.</span>
+              <span class="term-card-meta">trade journal &middot; rule-checked</span>
+            </span>
+            <span class="term-card-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
         </a>
-
-        <a class="card tool-card" data-tool="marketer" href="/marketer">
-          <span class="tool-card-icon purple">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-          </span>
-          <span class="tool-card-body">
-            <span class="tool-card-name">Marketer Mirror</span>
-            <span class="tool-card-desc">KDP break-even math and an ads report analyser.</span>
-          </span>
-          <span class="tool-card-chevron">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-          </span>
+        <a class="term term-card tool-card term-card--purple" data-tool="marketer" href="/marketer">
+          <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">marketer.exe</span></div>
+          <div class="term-body">
+            <span class="term-card-icon purple" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+            </span>
+            <span class="term-card-main tool-card-body">
+              <span class="term-card-title tool-card-name">Marketer Mirror</span>
+              <span class="term-card-desc tool-card-desc">KDP break-even math and an ads report analyser.</span>
+              <span class="term-card-meta">books / social &middot; 4 tools</span>
+            </span>
+            <span class="term-card-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+          </div>
         </a>
       </div>
     </main>
   </div>
 
-  <script src="/static/js/nav.js"></script>
   <script>
     // Last-used tool (see app/static/js/nav.js, MirrorNav.markLastUsed — set
     // by each tool page on load) no longer redirects away from this page —
