@@ -384,3 +384,10 @@ def test_one_author_cannot_fill_the_whole_list():
     picked = books.pick_competitors("epic fantasy dragon riders", schultz + others, fiction=True)
     assert len(picked) == 5
     assert [b["author"] for b in picked].count("R M Schultz") == books.MAX_PER_AUTHOR
+
+
+def test_the_suite_cannot_reach_the_real_google_books_api():
+    # conftest replaces the HTTP client for the whole session; an unpatched call must fail
+    # locally (ConnectError wrapped as BooksLookupError), never go out to Google.
+    with pytest.raises(books.BooksLookupError, match="ConnectError"):
+        REAL_FETCH("cozy mystery")

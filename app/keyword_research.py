@@ -239,6 +239,7 @@ def research_keywords(topic: str) -> dict:
         # (all subclass groq.APIError) — main.py turns this into a clean 502
         # instead of a raw 500 crashing out of the request.
         logger.warning("research_keywords Groq API call failed: %s", e)
+        books_future.cancel()  # the answer is an error anyway; don't spend a Books request on it if it hasn't started
         raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
 
     raw_content = resp.choices[0].message.content
