@@ -30,10 +30,13 @@
   // the /marketer pages and the root picker) default to dark when there's no
   // stored choice, rather than following the OS — every other page keeps
   // following the OS as before.
+  // The root picker also carries data-follow-os, which opts it back out of
+  // that dark default: with no stored choice it follows the OS preference.
   const isInstrument = () => document.documentElement.getAttribute("data-design") === "instrument";
+  const followsOS = () => document.documentElement.hasAttribute("data-follow-os");
 
   function systemTheme() {
-    if (isInstrument()) return "dark";
+    if (isInstrument() && !followsOS()) return "dark";
     return darkMediaQuery.matches ? "dark" : "light";
   }
 
@@ -60,6 +63,12 @@
   function applyTheme(explicitTheme) {
     if (explicitTheme) {
       document.documentElement.setAttribute("data-theme", explicitTheme);
+    } else if (isInstrument()) {
+      // instrument.css has no prefers-color-scheme block of its own (dark is
+      // its bare default), so "follow the OS" has to be an explicit attribute
+      // here rather than the absence of one. Not persisted — a stored choice
+      // still wins, and this re-runs if the OS preference changes.
+      document.documentElement.setAttribute("data-theme", systemTheme());
     } else {
       document.documentElement.removeAttribute("data-theme");
     }
@@ -87,7 +96,10 @@
     darkMediaQuery.addEventListener("change", () => {
       let current = null;
       try { current = localStorage.getItem(THEME_KEY); } catch (e) {}
-      if (current !== "light" && current !== "dark") updateThemeToggleUI(systemTheme());
+      if (current !== "light" && current !== "dark") {
+        if (followsOS()) applyTheme(null);
+        else updateThemeToggleUI(systemTheme());
+      }
     });
   }
 

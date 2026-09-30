@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-design="instrument">
+<html lang="en" data-design="instrument" data-follow-os>
 <head>
   <meta charset="UTF-8">
   <script>
@@ -8,6 +8,11 @@
         var stored = localStorage.getItem("mirror_theme");
         if (stored === "light" || stored === "dark") {
           document.documentElement.setAttribute("data-theme", stored);
+        } else {
+          // No stored choice: follow the OS (instrument.css defaults to dark
+          // otherwise) — set before first paint so there's no flash.
+          document.documentElement.setAttribute("data-theme",
+            window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         }
       } catch (e) {}
     })();
@@ -57,8 +62,8 @@
             </span>
             <span class="term-card-main tool-card-body">
               <span class="term-card-title tool-card-name">Marketer Mirror</span>
-              <span class="term-card-desc tool-card-desc">KDP break-even math and an ads report analyser.</span>
-              <span class="term-card-meta">books / social &middot; 4 tools</span>
+              <span class="term-card-desc tool-card-desc">KDP break-even math, ads analysis, keyword research and post ideas.</span>
+              <span class="term-card-meta">books &amp; social &middot; 4 tools</span>
             </span>
             <span class="term-card-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
           </div>
