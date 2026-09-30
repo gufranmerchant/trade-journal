@@ -107,3 +107,37 @@ def test_normalize_dedupes_categories_and_competitors_case_insensitively():
     })
     assert out["categories"] == ["Kindle eBooks > Mystery > Cozy", "Books > Thrillers"]
     assert out["competitors"] == ["Cozy village mystery series"]
+
+
+def _research_with_raw(raw):
+    with patch.object(keyword_research.client.chat.completions, "create", return_value=_mock_response(raw)):
+        return keyword_research.research_keywords("topic")
+
+
+def test_trailing_comma_before_closing_brace_and_bracket_is_forgiven():
+    raw = (
+        '{"keywords": [{"keyword": "cozy mystery", "reason": "genre match",},],'
+        ' "competitors": ["a", "b",], "categories": ["c",],}'
+    )
+    assert _research_with_raw(raw) == {
+        "keywords": [{"keyword": "cozy mystery", "reason": "genre match"}],
+        "competitors": ["a", "b"],
+        "categories": ["c"],
+    }
+
+
+def test_trailing_comma_repair_leaves_commas_inside_strings_alone():
+    raw = '{"keywords": [{"keyword": "x ,} y ,]", "reason": "r",}], "competitors": [], "categories": []}'
+    assert _research_with_raw(raw)["keywords"] == [{"keyword": "x ,} y ,]", "reason": "r"}]
+
+
+@pytest.mark.parametrize("raw", [
+    '{"keywords": [{"keyword": "a", "reason": "b"}, {"keyword": "c"',            # truncated mid-object
+    '{"keywords": [], "competitors": [], "categories": [}',                      # wrong closer
+    '{"keywords": [] "competitors": []}',                                        # missing comma
+    '{"keywords": [], competitors: [], "categories": [],}',                      # unquoted key + trailing comma
+])
+def test_genuinely_broken_json_still_fails_with_friendly_error(raw):
+    with pytest.raises(keyword_research.KeywordResearchError) as exc_info:
+        _research_with_raw(raw)
+    assert str(exc_info.value) == keyword_research.FRIENDLY_ERROR_MESSAGE

@@ -39,6 +39,10 @@ MAX_TOPIC_LENGTH = 300
 MAX_COMPLETION_TOKENS = 900
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?(</think>|$)", re.DOTALL)
+# Matches a whole JSON string (kept as-is) OR a comma followed only by
+# whitespace and a closer (dropped) — matching strings first means a ",}" that
+# sits inside a string value is never mistaken for a trailing comma.
+_TRAILING_COMMA_RE = re.compile(r'("(?:\\.|[^"\\])*")|,(?=\s*[}\]])')
 
 
 class KeywordResearchError(RuntimeError):
@@ -92,9 +96,19 @@ def _strip_to_json(raw: str) -> dict:
         raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE)
     try:
         return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        logger.warning("research_keywords: model returned malformed JSON: %s", e)
-        raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
+    except json.JSONDecodeError as first_error:
+        # The one failure mode worth forgiving: a trailing comma before a
+        # closing } or ] (the model does this intermittently). Strict parse
+        # runs first so valid output is never touched; anything still broken
+        # after this single repair (truncation, missing quotes, ...) fails.
+        try:
+            repaired = json.loads(_TRAILING_COMMA_RE.sub(r"\1", cleaned))
+            logger.info("research_keywords: repaired trailing comma in model JSON (%s)", first_error)
+            return repaired
+        except json.JSONDecodeError:
+            pass
+        logger.warning("research_keywords: model returned malformed JSON: %s", first_error)
+        raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from first_error
 
 
 def _dedupe(items) -> list[str]:
