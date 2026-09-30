@@ -279,3 +279,48 @@ def test_api_outage_end_to_end_still_returns_the_section_without_an_error(monkey
         result = keyword_research.research_keywords("cozy mystery novels")
     assert result["competitors"] == [{"kind": "pattern", "text": t} for t in PATTERNS]
     assert result["keywords"] and result["categories"]     # the rest of the page is unaffected
+
+
+# ------------------------------------------------------------------ diagnostics (what the Railway logs will say)
+
+FAKE_KEY = "AIzaSyFAKE0000000000000000000000000000"
+
+
+@pytest.mark.parametrize("status, body, expect", [
+    (403, {"error": {"status": "PERMISSION_DENIED", "message": "Books API has not been used in project 1 before or it is disabled.",
+                     "errors": [{"reason": "accessNotConfigured"}]}}, "accessNotConfigured"),
+    (403, {"error": {"status": "PERMISSION_DENIED", "message": "Requests from referer <empty> are blocked.",
+                     "errors": [{"reason": "forbidden"}]}}, "referer"),
+    (400, {"error": {"status": "INVALID_ARGUMENT", "message": "API key not valid. Please pass a valid API key.",
+                     "errors": [{"reason": "badRequest"}]}}, "API key not valid"),
+    (429, {"error": {"status": "RESOURCE_EXHAUSTED", "message": "Quota exceeded for quota metric 'Queries'.",
+                     "errors": [{"reason": "rateLimitExceeded"}]}}, "Quota exceeded"),
+])
+def test_refusals_are_logged_with_googles_reason_and_never_the_key(monkeypatch, caplog, status, body, expect):
+    _use_transport(monkeypatch, lambda r: httpx.Response(status, json=body), api_key=FAKE_KEY)
+    with caplog.at_level("INFO", logger="app.books"):
+        assert books.find_competitor_books("cozy mystery novels") == []
+    text = caplog.text
+    assert f"HTTP {status}" in text and expect in text
+    assert "key sent" in text
+    assert FAKE_KEY not in text                     # the secret never reaches the logs
+
+
+def test_a_successful_lookup_logs_the_volume_count(monkeypatch, caplog):
+    _use_transport(monkeypatch, lambda r: _ok([vol("Murder at the Bakery", ["J"], COZY_DESC, ["Cozy Mystery"])]), api_key=FAKE_KEY)
+    with caplog.at_level("INFO", logger="app.books"):
+        books.find_competitor_books("cozy mystery")
+    assert "HTTP 200" in caplog.text and "1 volumes" in caplog.text
+
+
+def test_describe_key_reports_shape_without_revealing_the_secret(monkeypatch):
+    monkeypatch.setattr(books.config, "GOOGLE_BOOKS_API_KEY", "")
+    assert "NOT SET" in books.describe_key() and "GOOGLE_BOOKS_API_KEY" in books.describe_key()
+    monkeypatch.setattr(books.config, "GOOGLE_BOOKS_API_KEY", FAKE_KEY)
+    described = books.describe_key()
+    assert "present" in described and str(len(FAKE_KEY)) in described and "AIza (normal)" in described
+    assert FAKE_KEY not in described and FAKE_KEY[4:12] not in described
+    monkeypatch.setattr(books.config, "GOOGLE_BOOKS_API_KEY", " " + FAKE_KEY + "\n")
+    assert "WHITESPACE" in books.describe_key()
+    monkeypatch.setattr(books.config, "GOOGLE_BOOKS_API_KEY", "sk-not-a-google-key")
+    assert "check it" in books.describe_key()

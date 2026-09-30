@@ -60,6 +60,35 @@ class BooksLookupError(RuntimeError):
     """One Google Books request failed. Always caught inside this module."""
 
 
+def describe_key() -> str:
+    """Redacted description of the configured key for the startup log: whether it
+    is present and its shape (length, and the "AIza" prefix every Google API key
+    has) - enough to spot a missing, truncated or mis-pasted value without ever
+    printing the secret."""
+    key = config.GOOGLE_BOOKS_API_KEY
+    if not key:
+        return "NOT SET (env var GOOGLE_BOOKS_API_KEY) - anonymous requests are refused by Google, so competitors will be pattern-only"
+    prefix_ok = key.startswith("AIza")
+    whitespace = key != key.strip()
+    return (f"present, {len(key)} chars, starts with {'AIza (normal)' if prefix_ok else 'something other than AIza (check it)'}"
+            + (", HAS LEADING/TRAILING WHITESPACE" if whitespace else ""))
+
+
+logger.info("GOOGLE_BOOKS_API_KEY: %s", describe_key())
+
+
+def _google_error_detail(resp: "httpx.Response") -> str:
+    """Google's own explanation for a refused request (reason + message), so the
+    log says WHY (quota, API not enabled, key restricted, key invalid) rather than
+    just the status code. The key is never part of these messages."""
+    try:
+        err = resp.json().get("error", {})
+        reasons = ",".join(e.get("reason", "") for e in err.get("errors", []) if isinstance(e, dict)) or err.get("status", "")
+        return f"{reasons}: {str(err.get('message', ''))[:200]}"
+    except Exception:
+        return resp.text[:200].replace("\n", " ")
+
+
 # ---------------------------------------------------------------- HTTP
 
 def _trip_breaker(reason: str) -> None:
@@ -88,16 +117,19 @@ def _fetch_volumes(query: str) -> list[dict]:
     if resp.status_code in (400, 401, 403, 429):
         # Quota exhausted, anonymous access refused, or a bad/disabled key: none
         # of these fix themselves within a request, so don't keep asking.
-        _trip_breaker(f"HTTP {resp.status_code}")
-        raise BooksLookupError(f"HTTP {resp.status_code}")
+        detail = _google_error_detail(resp)
+        _trip_breaker(f"HTTP {resp.status_code} ({detail}) [key {'sent' if config.GOOGLE_BOOKS_API_KEY else 'NOT sent'}]")
+        raise BooksLookupError(f"HTTP {resp.status_code}: {detail}")
     if resp.status_code != 200:
-        raise BooksLookupError(f"HTTP {resp.status_code}")
+        raise BooksLookupError(f"HTTP {resp.status_code}: {_google_error_detail(resp)}")
     try:
         data = resp.json()
     except ValueError as e:
         raise BooksLookupError("response was not JSON") from e
     items = data.get("items") if isinstance(data, dict) else None
-    return items if isinstance(items, list) else []
+    items = items if isinstance(items, list) else []
+    logger.info("google books HTTP 200 for %r: %d volumes", query, len(items))
+    return items
 
 
 def search_volumes(query: str) -> list[dict]:
