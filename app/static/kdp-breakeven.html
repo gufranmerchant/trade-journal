@@ -145,6 +145,7 @@
           btn.classList.toggle("active", btn.dataset.value === value);
         });
         el("deliveryFields").classList.toggle("hidden", value !== "70");
+        hideResult();
       }
 
       function showError(message) {
@@ -180,21 +181,6 @@
         if (!isFinite(n) || (inclusive ? n < min : n <= min)) return { state: "invalid" };
         return { state: "ok", value: n };
       };
-
-      // The visible fields for the current format/plan, with the same limits
-      // calculate() enforces. Used to drop a stale result the moment any of
-      // them becomes invalid (it never rewrites what the user typed).
-      function anyVisibleInputInvalid() {
-        const checks = [readNum("listPrice", 0, false)];
-        if (format === "ebook" && plan === "70") {
-          checks.push(readNum("fileSize", 0, false), readNum("deliveryFee", 0, true));
-        } else if (format === "paperback") {
-          const rate = readNum("royaltyRate", 0, false);
-          if (rate.state === "ok" && rate.value > 100) rate.state = "invalid";
-          checks.push(rate, readNum("printingCost", 0, true));
-        }
-        return checks.some((c) => c.state === "invalid");
-      }
 
       async function calculate() {
         hideError();
@@ -261,10 +247,11 @@
         btn.addEventListener("click", () => selectPlan(btn.dataset.value));
       });
       el("calcBtn").addEventListener("click", calculate);
+      // A shown result is only true for the exact inputs it was calculated from, so
+      // ANY edit to any field (valid, invalid or emptied) clears it - not just the
+      // values that happen to trip validation. The plan toggle does the same below.
       ["listPrice", "fileSize", "deliveryFee", "royaltyRate", "printingCost"].forEach((id) => {
-        el(id).addEventListener("input", () => {
-          if (anyVisibleInputInvalid()) hideResult();
-        });
+        el(id).addEventListener("input", hideResult);
       });
     })();
   </script>
