@@ -849,3 +849,49 @@ html[data-design="instrument"] .danger-button { color: #FFFFFF; }
 /* On the dark theme the fail icon sits on bright amber, where white is weak. */
 html[data-design="instrument"] .rule-tile.fail .rule-tile-icon { color: #2A1E08; }
 html[data-design="instrument"][data-theme="light"] .rule-tile.fail .rule-tile-icon { color: #FFFFFF; }
+
+/* =====================================================================
+   Strategy create/edit and strategy-detail screens (the last views to get
+   the Instrument look; only the Clerk sign-in keeps the old styling).
+   Reskin only: rule editing, field behaviour and the save flow are untouched.
+   ===================================================================== */
+.strategy-form.term, .strategy-detail-panel.term { padding-bottom: 18px; }
+.strategy-form.term > :not(.term-bar),
+.strategy-detail-panel.term > :not(.term-bar) { margin-inline: 18px; }
+.strategy-form.term > .term-bar + * { margin-top: 18px; }
+.strategy-detail-panel.term { display: flex; flex-direction: column; gap: 16px; }
+.strategy-detail-panel.term > .term-bar { margin-bottom: 2px; }
+
+html[data-design="instrument"] .rule-examples {
+  border: 1px solid rgba(45, 212, 166, 0.3);
+  border-radius: 10px;
+  font-family: var(--mm-mono);
+  font-size: 11px;
+}
+html[data-design="instrument"][data-theme="light"] .rule-examples { border-color: rgba(21, 138, 99, 0.3); }
+html[data-design="instrument"] .rule-remove-btn {
+  border: 1px solid rgba(255, 146, 105, 0.4);
+  border-radius: 10px;
+}
+html[data-design="instrument"][data-theme="light"] .rule-remove-btn { border-color: rgba(153, 60, 29, 0.3); }
+html[data-design="instrument"] .strategy-detail-name {
+  font-family: var(--mm-serif);
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+html[data-design="instrument"] .danger-link { font-family: var(--mm-sans); }
+
+/* Full-width controls (width: 100% buttons/links) plus the 18px side inset would
+   overflow the panel and be clipped by its rounded edge; cap every inset child. */
+.log-form.term > :not(.term-bar),
+.result-state.term > :not(.term-bar),
+.detail-edit-section.term > :not(.term-bar),
+.detail-summary.term > :not(.term-bar),
+.strategy-form.term > :not(.term-bar),
+.strategy-detail-panel.term > :not(.term-bar) { max-width: calc(100% - 36px); }
+
+/* The detail form was spaced by the old layout's flex gap; inside the panel the grid needs its own bottom space. */
+.detail-edit-section.term > .field-grid { margin-bottom: 18px; }
+.detail-edit-section.term > .error-banner { margin-bottom: 14px; }

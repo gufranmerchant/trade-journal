@@ -468,7 +468,8 @@
     </main>
 
     <main class="content hidden" id="strategyView">
-      <section class="strategy-form" id="strategyFormView">
+      <section class="strategy-form term" id="strategyFormView">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">strategy.cfg</span></div>
         <div class="field-block">
           <label class="field-label" for="strategyName">Name</label>
           <input type="text" id="strategyName" class="text-input" maxlength="80" placeholder="e.g. Breakout Retest">
@@ -518,7 +519,8 @@
     </main>
 
     <main class="content hidden" id="strategyDetailView">
-      <section class="detail-body" aria-live="polite">
+      <section class="detail-body strategy-detail-panel term" aria-live="polite">
+        <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-file">strategy.log</span></div>
         <div class="strategy-detail-header">
           <h2 class="strategy-detail-name" id="strategyDetailName"></h2>
           <div class="strategy-detail-meta">

@@ -540,13 +540,9 @@
     el("manageTopbar").classList.toggle("hidden", view !== "manage");
     el("strategyDetailTopbar").classList.toggle("hidden", view !== "strategyDetail");
     el("homeCta").classList.toggle("hidden", view !== "home");
-    // Views using the Instrument look: the dashboard, Log Trade, trade detail,
-    // Manage Strategies, and the initial loading spinner. The Clerk sign-in
-    // view and the strategy create/edit + strategy-detail screens keep
-    // style.css's original styling for now.
-    MirrorNav.setInstrumentDesign(
-      view === "home" || view === "log" || view === "detail" || view === "manage" || view === "authLoading"
-    );
+    // Every view uses the Instrument look except the Clerk sign-in view, whose
+    // widget brings its own styling.
+    MirrorNav.setInstrumentDesign(view !== "auth");
     window.scrollTo(0, 0);
   }
 
