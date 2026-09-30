@@ -152,3 +152,36 @@ def test_groq_connection_error_is_wrapped_with_friendly_message():
 def test_reuses_the_verified_keyword_research_model():
     from app import keyword_research
     assert post_ideas.MODEL is keyword_research.MODEL
+
+
+def _generate_with_raw(raw, platforms=("linkedin",)):
+    with patch.object(post_ideas.client.chat.completions, "create", return_value=_mock_response(raw)):
+        return post_ideas.generate_post_ideas("topic", list(platforms))
+
+
+def test_trailing_comma_before_closing_brace_and_bracket_is_forgiven():
+    raw = (
+        '{"ideas": [{"idea": "Bake video", "rationale": "performs well",},],'
+        ' "platform_tags": {"linkedin": [{"tag": "smallbusiness", "reason": "SEO",},],},}'
+    )
+    assert _generate_with_raw(raw) == {
+        "ideas": [{"idea": "Bake video", "rationale": "performs well"}],
+        "platform_tags": {"linkedin": [{"tag": "smallbusiness", "reason": "SEO"}]},
+    }
+
+
+def test_trailing_comma_repair_leaves_commas_inside_strings_alone():
+    raw = '{"ideas": [{"idea": "a ,} b ,]", "rationale": "r",}], "platform_tags": {"linkedin": []}}'
+    assert _generate_with_raw(raw)["ideas"] == [{"idea": "a ,} b ,]", "rationale": "r"}]
+
+
+@pytest.mark.parametrize("raw", [
+    '{"ideas": [{"idea": "a", "rationale": "b"}, {"idea": "c"',                    # truncated mid-object
+    '{"ideas": [], "platform_tags": {"linkedin": [}}',                             # wrong closer
+    '{"ideas": [] "platform_tags": {}}',                                           # missing comma
+    '{"ideas": [], platform_tags: {},}',                                           # unquoted key + trailing comma
+])
+def test_genuinely_broken_json_still_fails_with_friendly_error(raw):
+    with pytest.raises(post_ideas.PostIdeasError) as exc_info:
+        _generate_with_raw(raw)
+    assert str(exc_info.value) == post_ideas.FRIENDLY_ERROR_MESSAGE

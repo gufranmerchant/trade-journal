@@ -17,7 +17,7 @@ import re
 
 from groq import APIError
 
-from app.keyword_research import MODEL, client
+from app.keyword_research import MODEL, _TRAILING_COMMA_RE, client
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +118,19 @@ def _strip_to_json(raw: str) -> dict:
         raise PostIdeasError(FRIENDLY_ERROR_MESSAGE)
     try:
         return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        logger.warning("generate_post_ideas: model returned malformed JSON: %s", e)
-        raise PostIdeasError(FRIENDLY_ERROR_MESSAGE) from e
+    except json.JSONDecodeError as first_error:
+        # Same single forgiveness as app.keyword_research._strip_to_json: a
+        # trailing comma before a closing } or ] (string-aware regex shared
+        # from there). Strict parse ran first; anything still broken after
+        # this one repair fails with the friendly error.
+        try:
+            repaired = json.loads(_TRAILING_COMMA_RE.sub(r"\1", cleaned))
+            logger.info("generate_post_ideas: repaired trailing comma in model JSON (%s)", first_error)
+            return repaired
+        except json.JSONDecodeError:
+            pass
+        logger.warning("generate_post_ideas: model returned malformed JSON: %s", first_error)
+        raise PostIdeasError(FRIENDLY_ERROR_MESSAGE) from first_error
 
 
 def _normalize(parsed: dict, platforms: list[str]) -> dict:
