@@ -200,7 +200,8 @@ def test_queries_run_in_parallel(monkeypatch):
         time.sleep(0.3)
         with lock:
             active -= 1
-        return _ok([vol(f"Cozy Mystery {request.url.params['q']}", ["A"], COZY_DESC, ["Cozy Mystery"])])
+        q = request.url.params['q']
+        return _ok([vol(f"Cozy Mystery {q}", [f"Author of {q}"], COZY_DESC, ["Cozy Mystery"])])
 
     _use_transport(monkeypatch, handler)
     started = time.time()
@@ -229,14 +230,19 @@ def _model_reply(competitors, keywords=("cozy bakery mystery", "village cozy mys
     return MagicMock(choices=[MagicMock(message=MagicMock(content=raw))])
 
 
-def _research(topic, reply, fake_lookup):
-    with patch.object(keyword_research.client.chat.completions, "create", return_value=reply), \
-         patch.object(keyword_research.books, "find_competitor_books", side_effect=fake_lookup) as lookup:
+def _research(topic, reply, volumes_for_query, categories=("Kindle eBooks > Mystery",)):
+    """Runs research_keywords with a fake model reply and a fake Google lookup.
+    volumes_for_query(topic, extra_queries) -> raw volumes."""
+    import json
+    payload = json.loads(reply.choices[0].message.content)
+    payload["categories"] = list(categories)
+    reply = MagicMock(choices=[MagicMock(message=MagicMock(content=json.dumps(payload)))])
+    with patch.object(keyword_research.client.chat.completions, "create", return_value=reply),          patch.object(keyword_research.books, "lookup_volumes", side_effect=volumes_for_query) as lookup:
         return keyword_research.research_keywords(topic), lookup
 
 
-def _book(i):
-    return {"kind": "book", "title": f"Real Book {i}", "author": f"Real Author {i}", "description": "d", "year": "2020", "url": None}
+def _volumes(n, start=0):
+    return [vol(f"Real Book {i}", [f"Real Author {i}"], COZY_DESC, ["Cozy Mystery"]) for i in range(start, start + n)]
 
 
 PATTERNS = ["Village cozy with a retired teacher and a dog, light tone",
@@ -245,18 +251,24 @@ PATTERNS = ["Village cozy with a retired teacher and a dog, light tone",
 
 
 def test_five_real_books_fill_every_slot_and_no_pattern_blurbs_show():
-    result, lookup = _research("cozy mystery", _model_reply(PATTERNS), lambda *a, **k: [_book(i) for i in range(5)])
+    result, lookup = _research("cozy mystery", _model_reply(PATTERNS), lambda *a, **k: _volumes(6))
     assert [c["kind"] for c in result["competitors"]] == ["book"] * 5
+    assert all(c["title"].startswith("Real Book ") for c in result["competitors"])
     assert lookup.call_count == 1          # enough books: no second wave
 
 
 def test_fewer_books_than_slots_are_topped_up_per_slot_with_pattern_blurbs():
-    def fake(topic, extra_queries=(), **k):
-        return [_book(i) for i in range(2)]
-    result, lookup = _research("cozy mystery", _model_reply(PATTERNS), fake)
+    result, lookup = _research("cozy mystery", _model_reply(PATTERNS), lambda *a, **k: _volumes(2))
     assert [c["kind"] for c in result["competitors"]] == ["book", "book", "pattern", "pattern", "pattern"]
     assert lookup.call_count == 2          # second parallel wave on the model's top keywords
-    assert lookup.call_args.kwargs["extra_queries"] == ["cozy bakery mystery", "village cozy mystery"]
+    assert lookup.call_args.kwargs["extra_queries"] == ["cozy mystery", "cozy bakery mystery", "village cozy mystery"]
+
+
+def test_fiction_topics_add_subject_fiction_to_the_second_wave():
+    result, lookup = _research("cozy mystery", _model_reply(PATTERNS), lambda *a, **k: _volumes(1),
+                               categories=("Kindle eBooks > Literature & Fiction > Mystery",))
+    assert lookup.call_args.kwargs["extra_queries"] == [
+        "cozy mystery subject:fiction", "cozy bakery mystery subject:fiction", "village cozy mystery subject:fiction"]
 
 
 def test_zero_relevant_books_falls_back_to_exactly_the_old_pattern_list():
@@ -324,3 +336,51 @@ def test_describe_key_reports_shape_without_revealing_the_secret(monkeypatch):
     assert "WHITESPACE" in books.describe_key()
     monkeypatch.setattr(books.config, "GOOGLE_BOOKS_API_KEY", "sk-not-a-google-key")
     assert "check it" in books.describe_key()
+
+
+# ------------------------------------------------------------------ quality rules found by running against the live API
+
+def test_writing_tools_and_planners_are_not_competitors():
+    # Real live results for "cozy mystery novels": "Cozy Mystery Novel Storybuilder" etc.
+    volumes = [
+        vol("Cozy Mystery Novel Storybuilder", ["Kit Tunstall"], "Unravel the secrets of writing cozy mysteries.", ["Language Arts & Disciplines"]),
+        vol("Cozy Mystery Novel Plus Storybuilder", ["Kit Tunstall"], "Craft an unforgettable cozy mystery.", ["Fiction"]),
+        vol("Cozy Mystery Plot Planner", ["P. Lanner"], "A planner for your cozy mystery.", ["Fiction"]),
+        vol("How to Write a Cozy Mystery", ["W. Riter"], "Writing a cozy mystery.", ["Fiction"]),
+        vol("Mystery at Seagrave Hall", ["Clare Chase"], COZY_DESC, ["Fiction / Mystery & Detective / Cozy"]),
+    ]
+    assert [b["title"] for b in books.pick_competitors("cozy mystery novels", volumes, fiction=True)] == ["Mystery at Seagrave Hall"]
+
+
+def test_fiction_topics_exclude_criticism_film_and_craft_categories():
+    # Real live results for "hard-boiled noir" were mostly scholarship about noir.
+    volumes = [
+        vol("War Noir", ["Sarah Trott"], "The hard-boiled style and war experience.", ["Literary Criticism / American / General"]),
+        vol("American, Hard-boiled and Noir", ["William Marling"], "A Guide to the Fiction and Film of hard-boiled noir.", ["Performing Arts / Film"]),
+        vol("Hard-boiled", ["P. Thompson"], "Great lines from classic hard-boiled noir films.", ["Reference / Quotations"]),
+        vol("The Long Goodbye Type", ["R. Chandlerish"], "A hard-boiled noir detective novel.", ["Fiction / Mystery & Detective / Hard-Boiled"]),
+        vol("Untagged Noir Novel", ["I. Ndie"], "A hard-boiled noir detective story.", ()),  # no categories at all: kept
+    ]
+    picked = [b["title"] for b in books.pick_competitors("hard-boiled noir", volumes, fiction=True)]
+    assert set(picked) == {"The Long Goodbye Type", "Untagged Noir Novel"}
+
+
+def test_non_fiction_topics_keep_reference_and_education_categories():
+    volumes = [vol("Keto for Beginners", ["C. Ook"], "A keto cookbook for beginners.", ["Cooking / Health & Healing / Weight Loss", "Reference"])]
+    assert len(books.pick_competitors("keto cookbook for beginners", volumes, fiction=False)) == 1
+
+
+def test_childrens_books_are_not_competitors_for_adult_genres_but_are_for_childrens_topics():
+    kids = vol("Dragon Riders Academy", ["K. Idsauthor"], "Dragon riders in fantasy school.", ["Juvenile Fiction / Fantasy & Magic"])
+    assert books.pick_competitors("epic fantasy dragon riders", [kids], fiction=True) == []
+    assert len(books.pick_competitors("children's dragon riders fantasy", [kids], fiction=True)) == 1
+
+
+def test_one_author_cannot_fill_the_whole_list():
+    # Real live results for "epic fantasy dragon riders": three volumes by R M Schultz.
+    schultz = [vol(f"Through Blood and Dragons {i}", ["R M Schultz"], "An epic fantasy of dragon riders.", ["Fiction / Fantasy / Epic"])
+               for i in range(3)]
+    others = [vol(f"Dragon Riders {i}", [f"Author {i}"], "Epic fantasy dragon riders.", ["Fiction / Fantasy / Epic"]) for i in range(3)]
+    picked = books.pick_competitors("epic fantasy dragon riders", schultz + others, fiction=True)
+    assert len(picked) == 5
+    assert [b["author"] for b in picked].count("R M Schultz") == books.MAX_PER_AUTHOR

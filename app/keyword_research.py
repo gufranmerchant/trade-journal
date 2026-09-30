@@ -221,7 +221,7 @@ def research_keywords(topic: str) -> dict:
 
     # Start the book lookup now so it runs while the model call is in flight
     # (find_competitor_books never raises and has its own deadline).
-    books_future = _lookup_executor.submit(books.find_competitor_books, topic)
+    books_future = _lookup_executor.submit(books.lookup_volumes, topic)
 
     try:
         resp = client.chat.completions.create(
@@ -248,11 +248,17 @@ def research_keywords(topic: str) -> dict:
     parsed = _strip_to_json(raw_content)
     result = _normalize(parsed)
 
-    book_entries = books_future.result()
+    volumes = books_future.result()
+    # The model's own category suggestions tell us whether this is a fiction genre,
+    # which decides if criticism / craft / film books count as off-topic.
+    fiction = any("fiction" in c.lower() for c in result["categories"])
+    book_entries = books.pick_competitors(topic, volumes, fiction=fiction)
     if len(book_entries) < books.MAX_COMPETITORS and result["keywords"]:
         # Not enough real books for the topic itself: a second parallel wave on the
         # model's top keywords (the topic query is cached, so only these are new).
-        extra = [k["keyword"] for k in result["keywords"][:2]]
-        book_entries = books.find_competitor_books(topic, extra_queries=extra)
+        suffix = " subject:fiction" if fiction else ""
+        extra = [f"{topic}{suffix}"] + [f"{k['keyword']}{suffix}" for k in result["keywords"][:2]]
+        volumes = volumes + books.lookup_volumes(topic, extra_queries=extra)
+        book_entries = books.pick_competitors(topic, volumes, fiction=fiction)
     result["competitors"] = _assemble_competitors(book_entries, result["competitors"])
     return result

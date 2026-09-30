@@ -160,7 +160,10 @@ _STOP_WORDS = {
 _DERIVATIVE_TITLE_RE = re.compile(
     r"\b(summary|summaries|study guide|analysis of|workbook|sparknotes|cliffsnotes|quicklet|"
     r"bookhabits|book review|reading guide|trivia|unofficial|conversation starters|"
-    r"notes on|teaching guide|lesson plan|journal for|notebook)\b",
+    r"notes on|teaching guide|lesson plan|journal for|notebook|"
+    r"story ?builder|plot (?:generator|builder|planner)|character (?:sheet|builder)|planner|template|"
+    r"writing prompts|prompts for|how to write|writing guide|writing a |write your|"
+    r"colou?ring book|quiz book|activity book)\b",
     re.IGNORECASE,
 )
 
@@ -260,16 +263,44 @@ def _description_for(info: dict) -> str:
 
 
 MIN_RELEVANCE = 0.5
+MAX_PER_AUTHOR = 2   # volumes of one series by one author otherwise crowd out the market
+
+# Google files criticism, craft books, film guides and so on under these. For a
+# fiction topic they are never competitors (a search for "hard-boiled noir" is
+# mostly scholarship about noir otherwise).
+_NONFICTION_CATEGORY_MARKERS = (
+    "literary criticism", "authorship", "language arts", "reference", "study aids", "education",
+    "performing arts", "self-help", "business", "social science", "biography", "computers",
+    "art /", "photography", "history /", "psychology", "philosophy", "political science",
+)
+_JUVENILE_CATEGORY_PREFIXES = ("juvenile", "young adult")
+_YOUNG_READER_TOPIC_RE = re.compile(r"\b(children|child|kids?|juvenile|teens?|young adult|ya|middle grade|picture)\b", re.I)
 
 
-def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITORS) -> list[dict]:
-    """Filter, dedupe and rank raw volumes into at most `limit` competitor entries."""
+def _category_ok(topic: str, info: dict, fiction: bool | None) -> bool:
+    cats = [str(c).lower() for c in (info.get("categories") or [])]
+    if not cats:
+        return True  # indie titles often carry no categories; judge them on the other signals
+    if not _YOUNG_READER_TOPIC_RE.search(topic) and any(c.startswith(_JUVENILE_CATEGORY_PREFIXES) for c in cats):
+        return False  # a children's book is not a competitor for an adult genre
+    if fiction and any(m in c for c in cats for m in _NONFICTION_CATEGORY_MARKERS):
+        return False
+    return True
+
+
+def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITORS,
+                     fiction: bool | None = None) -> list[dict]:
+    """Filter, dedupe and rank raw volumes into at most `limit` competitor entries.
+    `fiction` is True when the topic is a fiction genre (the caller knows this from
+    the model's category suggestions); it switches on the non-fiction category rule."""
     tokens = _topic_tokens(topic)
     candidates = []
     seen = set()
     for volume in volumes:
         book = _book_from_volume(volume)
         if book is None:
+            continue
+        if not _category_ok(topic, book["info"], fiction):
             continue
         rel = _relevance(tokens, book["info"])
         if rel < MIN_RELEVANCE:
@@ -285,7 +316,14 @@ def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITO
     candidates.sort(key=lambda c: c[0], reverse=True)
 
     results = []
-    for _, book in candidates[:limit]:
+    per_author: dict[str, int] = {}
+    for _, book in candidates:
+        if len(results) >= limit:
+            break
+        author_key = book["authors"][0].lower()
+        if per_author.get(author_key, 0) >= MAX_PER_AUTHOR:
+            continue
+        per_author[author_key] = per_author.get(author_key, 0) + 1
         info = book["info"]
         results.append({
             "kind": "book",
@@ -300,9 +338,9 @@ def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITO
 
 # ---------------------------------------------------------------- public entry point
 
-def find_competitor_books(topic: str, extra_queries=(), limit: int = MAX_COMPETITORS) -> list[dict]:
-    """Real books for `topic` (plus any extra queries), looked up in parallel.
-    Never raises: any failure yields [] so the caller can fall back per entry."""
+def lookup_volumes(topic: str, extra_queries=()) -> list[dict]:
+    """Raw volumes for `topic` (plus any extra queries), looked up in parallel and
+    merged. Never raises: failures just contribute nothing."""
     if time.time() < _breaker_until:
         return []
     queries = []
@@ -316,10 +354,16 @@ def find_competitor_books(topic: str, extra_queries=(), limit: int = MAX_COMPETI
     done, not_done = wait(futures, timeout=LOOKUP_DEADLINE_SECONDS)
 
     volumes: list[dict] = []
+    seen_ids = set()
     failures = 0
     for future in done:
         try:
-            volumes.extend(future.result())
+            for v in future.result():
+                vid = v.get("id") if isinstance(v, dict) else None
+                if vid is not None and vid in seen_ids:
+                    continue
+                seen_ids.add(vid)
+                volumes.append(v)
         except Exception as e:  # BooksLookupError or anything unexpected
             failures += 1
             logger.info("books lookup %r failed: %s", futures[future], e)
@@ -327,12 +371,20 @@ def find_competitor_books(topic: str, extra_queries=(), limit: int = MAX_COMPETI
         future.cancel()
         failures += 1
         logger.info("books lookup %r timed out", futures[future])
+    logger.info("books lookup: %d queries (%d failed) -> %d volumes in %.2fs",
+                len(queries), failures, len(volumes), time.time() - started)
+    return volumes
 
+
+def find_competitor_books(topic: str, extra_queries=(), limit: int = MAX_COMPETITORS,
+                          fiction: bool | None = None) -> list[dict]:
+    """lookup + pick in one call. Never raises: any failure yields [] so the caller
+    can fall back per entry."""
+    volumes = lookup_volumes(topic, extra_queries)
     try:
-        results = pick_competitors(topic, volumes, limit)
+        results = pick_competitors(topic, volumes, limit, fiction)
     except Exception:  # defensive: a surprising payload must never break the page
         logger.exception("books result processing failed")
         results = []
-    logger.info("books lookup: %d queries (%d failed) -> %d raw volumes -> %d kept in %.2fs",
-                len(queries), failures, len(volumes), len(results), time.time() - started)
+    logger.info("books: %d kept of %d volumes for %r", len(results), len(volumes), topic)
     return results
