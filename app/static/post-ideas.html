@@ -150,6 +150,10 @@
       }
 
       async function generate() {
+        // Clear the previous result BEFORE validating, so a rejected
+        // submission never leaves stale results visible under the error.
+        hideError();
+        hideResults();
         const topic = el("topicInput").value.trim();
         const platforms = selectedPlatforms();
 
@@ -162,8 +166,6 @@
           return;
         }
 
-        hideError();
-        hideResults();
         const btn = el("generateBtn");
         btn.disabled = true;
         el("loadingView").classList.remove("hidden");

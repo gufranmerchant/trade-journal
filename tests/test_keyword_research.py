@@ -96,3 +96,14 @@ def test_groq_connection_error_is_wrapped_with_friendly_message():
         with pytest.raises(keyword_research.KeywordResearchError) as exc_info:
             keyword_research.research_keywords("topic")
     assert str(exc_info.value) == keyword_research.FRIENDLY_ERROR_MESSAGE
+
+
+def test_normalize_dedupes_categories_and_competitors_case_insensitively():
+    from app.keyword_research import _normalize
+    out = _normalize({
+        "keywords": [],
+        "categories": ["Kindle eBooks > Mystery > Cozy", "kindle ebooks >  mystery > cozy", "Books > Thrillers"],
+        "competitors": ["Cozy village mystery series", "Cozy village mystery series", ""],
+    })
+    assert out["categories"] == ["Kindle eBooks > Mystery > Cozy", "Books > Thrillers"]
+    assert out["competitors"] == ["Cozy village mystery series"]

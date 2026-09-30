@@ -58,10 +58,10 @@ book topic or working title, suggest, briefly and concisely:
 Amazon search to find this book. Prefer long-tail, buyer-intent phrases \
 over single generic words. For each, give a short reason (max 8 words, not \
 a full sentence) a reader would search that phrase.
-2. competitors: 4-6 real, specific book titles (with author if you know it) \
-that are likely direct competitors on Amazon for this topic.
+2. competitors: 4-6 entries describing likely direct competitors on Amazon for this topic. ANTI-FABRICATION RULES (strict, non-negotiable): NEVER invent a book. A specific "Title by Author" entry is allowed ONLY if you are highly confident that exact book really exists and is by that author; if there is any doubt about the title, the author, or whether the pairing is real, do NOT write an author name or a title at all. In that case describe the competitor by pattern only, e.g. "Long-running village-set cozy mystery series with an amateur sleuth and a pet sidekick" or "Bestselling standalone domestic thriller with an unreliable narrator". Never attach a made-up title to a real author's name, never make up a series name, and never guess. Pattern-only entries are always better than a doubtful real-looking title. Competitors must match the topic's audience: an adult genre gets adult books, a children's topic gets children's books - never mix them. Do not repeat an entry.
 3. categories: 3-4 real Amazon Kindle/Book browse categories this book \
-could be listed under, using Amazon's actual category naming (e.g. "Kindle \
+could be listed under (each one distinct - no duplicates or \
+near-duplicates), using Amazon's actual category naming (e.g. "Kindle \
 eBooks > Literature & Fiction > Genre Fiction > Mystery, Thriller & \
 Suspense > Mystery > Cozy").
 
@@ -97,6 +97,17 @@ def _strip_to_json(raw: str) -> dict:
         raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
 
 
+def _dedupe(items) -> list[str]:
+    """Drop empties and case/whitespace-insensitive repeats, keeping first-seen order."""
+    seen, out = set(), []
+    for item in items:
+        key = " ".join(item.lower().split())
+        if key and key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
 def _normalize(parsed: dict) -> dict:
     """Defensive coercion, same rationale as app.ai._normalize_setup_suggestion
     — a half-formed entry is dropped rather than shown broken to the user."""
@@ -107,10 +118,21 @@ def _normalize(parsed: dict) -> dict:
             continue
         keywords.append({"keyword": text, "reason": str((k or {}).get("reason") or "").strip()})
 
-    competitors = [s for s in (str(c).strip() for c in parsed.get("competitors") or []) if s]
-    categories = [s for s in (str(c).strip() for c in parsed.get("categories") or []) if s]
+    competitors = _dedupe(str(c).strip() for c in parsed.get("competitors") or [])
+    categories = _dedupe(str(c).strip() for c in parsed.get("categories") or [])
 
     return {"keywords": keywords, "competitors": competitors, "categories": categories}
+
+
+def validate_topic(topic: str) -> str:
+    """Returns the stripped topic, or raises ValueError. Split out so main.py
+    can reject bad input before it spends a rate-limit hit."""
+    topic = (topic or "").strip()
+    if not topic:
+        raise ValueError("topic is required")
+    if len(topic) > MAX_TOPIC_LENGTH:
+        raise ValueError(f"topic must be {MAX_TOPIC_LENGTH} characters or fewer")
+    return topic
 
 
 def research_keywords(topic: str) -> dict:
@@ -121,11 +143,7 @@ def research_keywords(topic: str) -> dict:
     as a 502) — the same split app.ai.AIResponseError draws for the trading
     pipeline.
     """
-    topic = (topic or "").strip()
-    if not topic:
-        raise ValueError("topic is required")
-    if len(topic) > MAX_TOPIC_LENGTH:
-        raise ValueError(f"topic must be {MAX_TOPIC_LENGTH} characters or fewer")
+    topic = validate_topic(topic)
 
     try:
         resp = client.chat.completions.create(

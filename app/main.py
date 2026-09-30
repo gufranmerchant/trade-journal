@@ -56,7 +56,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -80,6 +82,21 @@ from app.rate_limit import RateLimiter
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 
 app = FastAPI(title="Mirror")
+
+
+@app.middleware("http")
+async def redirect_apex_to_www(request: Request, call_next):
+    # Bare domain -> www, preserving path and query, for EVERY route (not just
+    # "/"). Only takes effect if the apex actually reaches this app (Railway
+    # custom domain + ALIAS/ANAME record); a registrar-level forward never
+    # gets here. Matches the exact apex host only, so localhost and the
+    # *.up.railway.app URL are untouched.
+    if request.headers.get("host", "").split(":")[0].lower() == "themirrorjournal.org":
+        target = f"https://www.themirrorjournal.org{request.url.path}"
+        if request.url.query:
+            target += f"?{request.url.query}"
+        return RedirectResponse(target, status_code=301)
+    return await call_next(request)
 
 # Plain HTML/CSS/JS frontend, no build step — served as static files so it
 # can become a PWA later without changing how it's hosted. Mounted under
@@ -784,6 +801,20 @@ def update_strategy(
         return _strategy_out(strategy)
 
 
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError):
+    # The /tools/* pages show `detail` straight to the user, and FastAPI's
+    # default is a list of dicts (rendered as "[object Object]"). Give those
+    # routes a plain sentence; everything else keeps FastAPI's default shape.
+    if not request.url.path.startswith("/tools/"):
+        return JSONResponse({"detail": jsonable_encoder(exc.errors())}, status_code=422)
+    fields = sorted({str(e["loc"][-1]) for e in exc.errors() if e.get("loc")})
+    return JSONResponse(
+        {"detail": f"Invalid or missing input ({', '.join(fields) or 'request body'}) — check the values and try again."},
+        status_code=422,
+    )
+
+
 class KdpBreakevenRequest(BaseModel):
     format: str  # "ebook" | "paperback"
     list_price: float
@@ -821,12 +852,19 @@ def kdp_breakeven(payload: KdpBreakevenRequest):
         raise HTTPException(422, str(e))
 
 
+ADS_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+
+
 @app.post("/tools/ads-analyser")
 async def ads_analyser(report: UploadFile = File(...)):
     """Stateless CSV analysis, no user data stored — same "no Clerk auth"
     pattern as /tools/kdp-breakeven above. Nothing here is persisted; the
     parsed/scored rows exist only for this one response."""
-    csv_bytes = await report.read()
+    # Real Amazon/Meta exports are well under this; without a cap a 10 MB /
+    # 400k-row file was accepted and returned as one giant JSON response.
+    csv_bytes = await report.read(ADS_MAX_UPLOAD_BYTES + 1)
+    if len(csv_bytes) > ADS_MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"That file is too large — the limit is {ADS_MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
     try:
         rows = ads_analyser_module.parse_ads_csv(csv_bytes)
         rows = ads_analyser_module.compute_metrics(rows)
@@ -869,6 +907,10 @@ def keyword_research(payload: KeywordResearchRequest, request: Request):
     /tools/ads-analyser above. The rate limit is checked BEFORE the Groq
     call runs, since the whole point is protecting API spend, not just
     shaping the response."""
+    try:
+        keyword_research_module.validate_topic(payload.topic)  # invalid input must not burn quota
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     if not _keyword_research_limiter.allow(_client_ip(request)):
         raise HTTPException(
             429,
@@ -904,6 +946,10 @@ def post_ideas(payload: PostIdeasRequest, request: Request):
     """Stateless, no Clerk auth — same pattern as /tools/keyword-research
     above. The rate limit is checked BEFORE the Groq call runs, for the
     same reason."""
+    try:
+        post_ideas_module.validate_request(payload.topic, payload.platforms)  # invalid input must not burn quota
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     if not _post_ideas_limiter.allow(_client_ip(request)):
         raise HTTPException(
             429,

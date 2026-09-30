@@ -154,6 +154,17 @@ def _normalize(parsed: dict, platforms: list[str]) -> dict:
     return {"ideas": ideas, "platform_tags": platform_tags}
 
 
+def validate_request(topic: str, platforms) -> tuple[str, list[str]]:
+    """Returns (stripped topic, normalized platforms), or raises ValueError.
+    Split out so main.py can reject bad input before it spends a rate-limit hit."""
+    topic = (topic or "").strip()
+    if not topic:
+        raise ValueError("topic is required")
+    if len(topic) > MAX_TOPIC_LENGTH:
+        raise ValueError(f"topic must be {MAX_TOPIC_LENGTH} characters or fewer")
+    return topic, _normalize_platforms(platforms)
+
+
 def generate_post_ideas(topic: str, platforms) -> dict:
     """topic + platforms -> {"ideas": [...], "platform_tags": {platform: [...]}}.
 
@@ -162,13 +173,7 @@ def generate_post_ideas(topic: str, platforms) -> dict:
     call itself failed (caught as a 502) — same split as
     app.keyword_research.research_keywords.
     """
-    topic = (topic or "").strip()
-    if not topic:
-        raise ValueError("topic is required")
-    if len(topic) > MAX_TOPIC_LENGTH:
-        raise ValueError(f"topic must be {MAX_TOPIC_LENGTH} characters or fewer")
-
-    normalized_platforms = _normalize_platforms(platforms)
+    topic, normalized_platforms = validate_request(topic, platforms)
     labels = [PLATFORM_LABELS[p] for p in normalized_platforms]
 
     try:

@@ -123,14 +123,16 @@
       }
 
       async function research() {
+        // Clear the previous result BEFORE validating, so a rejected
+        // submission never leaves stale results visible under the error.
+        hideError();
+        hideResults();
         const topic = el("topicInput").value.trim();
         if (!topic) {
           showError("Enter a book topic or title.");
           return;
         }
 
-        hideError();
-        hideResults();
         const btn = el("researchBtn");
         btn.disabled = true;
         el("loadingView").classList.remove("hidden");

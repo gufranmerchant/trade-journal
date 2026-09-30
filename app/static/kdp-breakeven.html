@@ -171,34 +171,46 @@
         hideError();
         hideResult();
 
-        const listPrice = parseFloat(el("listPrice").value);
-        if (!listPrice || listPrice <= 0) {
-          showError("Enter a list price.");
-          return;
-        }
+        // A type=number input reports "" both when empty and when it holds
+        // non-numeric text (validity.badInput), so check badInput to tell
+        // "empty" from "invalid" apart. min is the smallest allowed value.
+        const readNum = (id, min, inclusive) => {
+          const input = el(id);
+          if (input.validity.badInput) return { state: "invalid" };
+          if (input.value.trim() === "") return { state: "empty" };
+          const n = Number(input.value);
+          if (!isFinite(n) || (inclusive ? n < min : n <= min)) return { state: "invalid" };
+          return { state: "ok", value: n };
+        };
+        const fail = (results, emptyMsg, invalidMsg) => {
+          if (results.some((r) => r.state === "invalid")) return showError(invalidMsg), true;
+          if (results.some((r) => r.state === "empty")) return showError(emptyMsg), true;
+          return false;
+        };
+
+        const price = readNum("listPrice", 0, false);
+        if (fail([price], "Enter a list price.", "Enter a valid price above $0.")) return;
+        const listPrice = price.value;
 
         const payload = { format, list_price: listPrice };
         if (format === "ebook") {
           payload.plan = plan;
           if (plan === "70") {
-            const fileSize = parseFloat(el("fileSize").value);
-            const deliveryFee = parseFloat(el("deliveryFee").value);
-            if (!fileSize || isNaN(deliveryFee)) {
-              showError("Enter file size and delivery fee per MB.");
-              return;
-            }
-            payload.file_size_mb = fileSize;
-            payload.delivery_fee_per_mb = deliveryFee;
+            const size = readNum("fileSize", 0, false);
+            const fee = readNum("deliveryFee", 0, true);
+            if (fail([size, fee], "Enter file size and delivery fee per MB.",
+                     "Enter a valid file size above 0 MB and a delivery fee of $0 or more.")) return;
+            payload.file_size_mb = size.value;
+            payload.delivery_fee_per_mb = fee.value;
           }
         } else {
-          const ratePercent = parseFloat(el("royaltyRate").value);
-          const printingCost = parseFloat(el("printingCost").value);
-          if (!ratePercent || isNaN(printingCost)) {
-            showError("Enter royalty rate and printing cost.");
-            return;
-          }
-          payload.royalty_rate = ratePercent / 100;
-          payload.printing_cost = printingCost;
+          const rate = readNum("royaltyRate", 0, false);
+          const cost = readNum("printingCost", 0, true);
+          if (rate.state === "ok" && rate.value > 100) rate.state = "invalid";
+          if (fail([rate, cost], "Enter royalty rate and printing cost.",
+                   "Enter a royalty rate between 1 and 100 and a printing cost of $0 or more.")) return;
+          payload.royalty_rate = rate.value / 100;
+          payload.printing_cost = cost.value;
         }
 
         const btn = el("calcBtn");
