@@ -3,7 +3,10 @@ Amazon-search keyword suggestions (with a short reason each), likely
 competitor titles, and Amazon browse-category suggestions. The same kind of
 output Publisher Rocket/BookBeam sell, minus their scraped Amazon
 volume/rank data — this is LLM judgment, a starting point for research, not
-ground truth.
+ground truth. The "competitors" section is the exception: real titles and
+authors come from the Google Books API (app/books.py), never from the model, and
+the model's pattern-only blurbs are just the per-slot fallback when no real match
+is found or the lookup fails.
 
 Unlike app/kdp.py and app/ads_analyser.py this needs the network (an LLM
 call rather than a pure calculation), so it follows app/ai.py's Groq
@@ -16,8 +19,11 @@ import json
 import logging
 import re
 
+from concurrent.futures import ThreadPoolExecutor
+
 from groq import APIError, Groq
 
+from app import books
 from app.config import GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
@@ -159,6 +165,39 @@ def _normalize(parsed: dict) -> dict:
     return {"keywords": keywords, "competitors": competitors, "categories": categories}
 
 
+# Separate from books' own per-query pool: an outer lookup waits on inner tasks, so
+# sharing one pool could deadlock under load.
+_lookup_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="kw-books")
+
+# Defence in depth for the pattern-only blurbs (the prompt already forbids
+# names): drop any blurb that still reads like a named work — "... by First
+# Last", a quoted Title Case phrase, or "The Something Series". A false
+# positive only loses a blurb; a false negative could show an invented book.
+_BY_AUTHOR_RE = re.compile(r"\bby\s+[A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+)+")
+_QUOTED_TITLE_RE = re.compile(r"[\"\u201c\u2018'][A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){1,}[\"\u201d\u2019']")
+_NAMED_SERIES_RE = re.compile(r"\b[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)*\s+(?:series|trilogy|saga|chronicles)\b")
+
+
+def _looks_like_named_work(text: str) -> bool:
+    rest = text.split(" ", 1)[1] if " " in text else ""  # ignore the sentence-initial capital
+    return bool(_BY_AUTHOR_RE.search(text) or _QUOTED_TITLE_RE.search(text) or _NAMED_SERIES_RE.search(rest))
+
+
+def _assemble_competitors(book_entries: list[dict], patterns: list[str]) -> list[dict]:
+    """Verified books first, then pattern blurbs to fill any remaining slots of
+    books.MAX_COMPETITORS. With no books at all this is exactly the old
+    pattern-only list. Book entries are passed through untouched."""
+    entries = list(book_entries[: books.MAX_COMPETITORS])
+    for text in patterns:
+        if len(entries) >= books.MAX_COMPETITORS:
+            break
+        if _looks_like_named_work(text):
+            logger.warning("dropped pattern blurb that looks like a named work: %r", text)
+            continue
+        entries.append({"kind": "pattern", "text": text})
+    return entries
+
+
 def validate_topic(topic: str) -> str:
     """Returns the stripped topic, or raises ValueError. Split out so main.py
     can reject bad input before it spends a rate-limit hit."""
@@ -179,6 +218,10 @@ def research_keywords(topic: str) -> dict:
     pipeline.
     """
     topic = validate_topic(topic)
+
+    # Start the book lookup now so it runs while the model call is in flight
+    # (find_competitor_books never raises and has its own deadline).
+    books_future = _lookup_executor.submit(books.find_competitor_books, topic)
 
     try:
         resp = client.chat.completions.create(
@@ -203,4 +246,13 @@ def research_keywords(topic: str) -> dict:
     # a bad or malformed response can be diagnosed from the server log.
     logger.info("research_keywords raw model output: %r", raw_content)
     parsed = _strip_to_json(raw_content)
-    return _normalize(parsed)
+    result = _normalize(parsed)
+
+    book_entries = books_future.result()
+    if len(book_entries) < books.MAX_COMPETITORS and result["keywords"]:
+        # Not enough real books for the topic itself: a second parallel wave on the
+        # model's top keywords (the topic query is cached, so only these are new).
+        extra = [k["keyword"] for k in result["keywords"][:2]]
+        book_entries = books.find_competitor_books(topic, extra_queries=extra)
+    result["competitors"] = _assemble_competitors(book_entries, result["competitors"])
+    return result

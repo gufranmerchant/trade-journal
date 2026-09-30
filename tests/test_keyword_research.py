@@ -33,7 +33,7 @@ def test_topic_too_long_raises_value_error():
 def test_research_keywords_returns_normalized_shape():
     raw = """{
         "keywords": [{"keyword": "cozy bakery mystery", "reason": "genre + setting search"}],
-        "competitors": ["Death by Chocolate Cake"],
+        "competitors": ["Village cozy with a retired teacher and a dog, light tone"],
         "categories": ["Kindle eBooks > Mystery"]
     }"""
     with patch.object(keyword_research.client.chat.completions, "create", return_value=_mock_response(raw)):
@@ -41,7 +41,7 @@ def test_research_keywords_returns_normalized_shape():
 
     assert result == {
         "keywords": [{"keyword": "cozy bakery mystery", "reason": "genre + setting search"}],
-        "competitors": ["Death by Chocolate Cake"],
+        "competitors": [{"kind": "pattern", "text": "Village cozy with a retired teacher and a dog, light tone"}],
         "categories": ["Kindle eBooks > Mystery"],
     }
 
@@ -56,7 +56,7 @@ def test_research_keywords_drops_malformed_entries():
         result = keyword_research.research_keywords("topic")
 
     assert result["keywords"] == [{"keyword": "real one", "reason": ""}]
-    assert result["competitors"] == ["Real Competitor"]
+    assert result["competitors"] == [{"kind": "pattern", "text": "Real Competitor"}]
     assert result["categories"] == []
 
 
@@ -121,7 +121,7 @@ def test_trailing_comma_before_closing_brace_and_bracket_is_forgiven():
     )
     assert _research_with_raw(raw) == {
         "keywords": [{"keyword": "cozy mystery", "reason": "genre match"}],
-        "competitors": ["a", "b"],
+        "competitors": [{"kind": "pattern", "text": "a"}, {"kind": "pattern", "text": "b"}],
         "categories": ["c"],
     }
 

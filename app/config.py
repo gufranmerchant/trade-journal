@@ -23,6 +23,9 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 CLERK_PUBLISHABLE_KEY = os.environ.get("CLERK_PUBLISHABLE_KEY", "")
 CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Optional: real competitor books for Keyword Research (app/books.py). Google Books now
+# refuses anonymous requests, so without this the section shows pattern blurbs only.
+GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY", "")
 
 
 def _clerk_frontend_api(publishable_key: str) -> str:

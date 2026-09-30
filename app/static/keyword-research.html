@@ -104,6 +104,36 @@
         el("resultsWrap").classList.add("hidden");
       }
 
+      // Competitors are either real books from Google Books ({kind: "book"} — title,
+      // author and description are the API's own text) or, where no real match was
+      // found for a slot, a pattern description ({kind: "pattern", text}).
+      function renderCompetitors(items, chips) {
+        const books = items.filter((c) => c.kind === "book");
+        const patterns = items.filter((c) => c.kind !== "book");
+        const bookCards = books.map((b, i) => {
+          const safeUrl = typeof b.url === "string" && b.url.startsWith("https://") ? b.url : null;
+          const title = safeUrl
+            ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(b.title)}</a>`
+            : escapeHtml(b.title);
+          const byline = `by ${escapeHtml(b.author)}${b.year ? ` · ${escapeHtml(b.year)}` : ""}`;
+          return `
+          <div class="card idea-card">
+            <div class="idea-card-number">${i + 1}</div>
+            <div class="idea-card-body">
+              <div class="idea-card-title">${title}</div>
+              <div class="idea-card-rationale">${byline}</div>
+              ${b.description ? `<div class="idea-card-rationale">${escapeHtml(b.description)}</div>` : ""}
+            </div>
+          </div>`;
+        }).join("");
+        const parts = [];
+        if (bookCards) parts.push(`<div class="idea-list comp-books">${bookCards}</div>`);
+        if (patterns.length) {
+          parts.push(`<div class="chip-static-list comp-patterns">${chips(patterns.map((p) => p.text || ""))}</div>`);
+        }
+        return parts.join("") || `<p class="section-hint">None suggested.</p>`;
+      }
+
       function renderResults(data) {
         el("keywordList").innerHTML = (data.keywords || []).map((k, i) => `
           <div class="card idea-card">
@@ -117,7 +147,7 @@
 
         const chips = (items) => items.map((s) => `<span class="chip chip-static">${escapeHtml(s)}</span>`).join("")
           || `<p class="section-hint">None suggested.</p>`;
-        el("competitorList").innerHTML = chips(data.competitors || []);
+        el("competitorList").innerHTML = renderCompetitors(data.competitors || [], chips);
         el("categoryList").innerHTML = chips(data.categories || []);
 
         el("resultsWrap").classList.remove("hidden");

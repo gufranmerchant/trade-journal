@@ -901,3 +901,9 @@ html[data-design="instrument"] .danger-link { font-family: var(--mm-sans); }
 html[data-design="instrument"] .section-hint a { color: var(--teal); font-weight: 600; }
 html[data-design="instrument"] .section-hint a:hover { text-decoration: none; }
 .term-body > #csvGuidance { margin: 2px 0 16px; line-height: 1.55; }
+
+/* Keyword Research "Likely competitors": real-book cards (linked title) above any pattern fallbacks. */
+.comp-books, .comp-patterns { flex: 1 1 100%; }
+.comp-patterns { margin-top: 2px; }
+html[data-design="instrument"] .idea-card-title a { color: inherit; text-decoration: none; }
+html[data-design="instrument"] .idea-card-title a:hover { color: var(--teal); text-decoration: underline; }
