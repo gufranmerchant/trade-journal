@@ -222,41 +222,47 @@
   }
 
   // ---------------------------------------------------------------------
-  // Reddit sections. The tool pages' own HTML knows nothing about Reddit: when a response
-  // from the two tool endpoints carries Reddit data, this loads reddit-sections.js on demand
-  // and it builds the sections in the DOM at that moment. Otherwise nothing is loaded and
-  // nothing is created, so with Reddit off (or nothing to show) the page is exactly as it
-  // was before the integration existed. Any previous search's sections are always removed.
+  // Optional result sections. The tool pages' own HTML knows nothing about them: when a response
+  // from the two tool endpoints carries Reddit data (`reddit` / `trending`) or Wikipedia interest
+  // data (`interest`), the script that renders it is loaded on demand and builds the section in
+  // the DOM at that moment. Otherwise nothing is loaded and nothing is created, so a page with
+  // none of those is exactly as it was before they existed. Any previous search's sections are
+  // always removed first.
   // ---------------------------------------------------------------------
-  const REDDIT_TOOL_PATHS = ["/tools/keyword-research", "/tools/post-ideas"];
-  const REDDIT_SECTION_ATTR = "data-reddit-section";
-  const redditScriptVersion = (() => {
+  const TOOL_RESPONSE_PATHS = ["/tools/keyword-research", "/tools/post-ideas"];
+  const OPTIONAL_SECTION_SELECTOR = "[data-reddit-section],[data-interest-section]";
+  const scriptVersion = (() => {
     const src = document.currentScript && document.currentScript.src;  // same ?v= cache-bust as this file
     const m = src && src.match(/\?v=\d+/);
     return m ? m[0] : "";
   })();
-  let redditScriptPromise = null;
+  const scriptPromises = {};
 
-  function loadRedditSections() {
-    if (window.MirrorReddit) return Promise.resolve(window.MirrorReddit);
-    if (!redditScriptPromise) {
-      redditScriptPromise = new Promise((resolve, reject) => {
+  function loadOptionalScript(file, globalName) {
+    if (window[globalName]) return Promise.resolve(window[globalName]);
+    if (!scriptPromises[file]) {
+      scriptPromises[file] = new Promise((resolve, reject) => {
         const script = document.createElement("script");
-        script.src = "/static/js/reddit-sections.js" + redditScriptVersion;
-        script.onload = () => resolve(window.MirrorReddit);
+        script.src = "/static/js/" + file + scriptVersion;
+        script.onload = () => resolve(window[globalName]);
         script.onerror = reject;
         document.head.appendChild(script);
       });
     }
-    return redditScriptPromise;
+    return scriptPromises[file];
   }
 
   function onToolResponse(data) {
     const wrap = document.getElementById("resultsWrap");
     if (!wrap || !data) return;
-    wrap.querySelectorAll("[" + REDDIT_SECTION_ATTR + "]").forEach((n) => n.remove());
-    const kind = data.reddit ? "keyword" : data.trending ? "social" : null;
-    if (kind) loadRedditSections().then((m) => m.render(kind, data)).catch(() => {});
+    wrap.querySelectorAll(OPTIONAL_SECTION_SELECTOR).forEach((n) => n.remove());
+    if (data.interest) {
+      loadOptionalScript("interest-section.js", "MirrorInterest").then((m) => m.render(data)).catch(() => {});
+    }
+    if (data.reddit || data.trending) {
+      loadOptionalScript("reddit-sections.js", "MirrorReddit")
+        .then((m) => m.render(data.reddit ? "keyword" : "social", data)).catch(() => {});
+    }
   }
 
   if (typeof window.fetch === "function" && !window.__mirrorFetchHooked) {
@@ -265,7 +271,7 @@
     window.fetch = function (input, init) {
       const promise = originalFetch(input, init);
       const url = typeof input === "string" ? input : (input && input.url) || "";
-      if (REDDIT_TOOL_PATHS.some((path) => url.indexOf(path) !== -1)) {
+      if (TOOL_RESPONSE_PATHS.some((path) => url.indexOf(path) !== -1)) {
         promise.then((res) => (res.ok ? res.clone().json() : null)).then(onToolResponse).catch(() => {});
       }
       return promise;  // the page gets the untouched response

@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from groq import APIError, Groq
 
-from app import books, reddit
+from app import books, reddit, wikipedia
 from app.config import GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
@@ -209,6 +209,17 @@ def validate_topic(topic: str) -> str:
     return topic
 
 
+INTEREST_WAIT_SECONDS = 4.0   # the lookup started with the model call, so it has almost always finished already
+
+
+def _interest_result(future) -> dict | None:
+    try:
+        return future.result(timeout=INTEREST_WAIT_SECONDS)
+    except Exception:  # timeout or an unexpected error: the section is optional
+        future.cancel()
+        return None
+
+
 def research_keywords(topic: str) -> dict:
     """topic -> {"keywords": [...], "competitors": [...], "categories": [...]}.
 
@@ -226,6 +237,9 @@ def research_keywords(topic: str) -> dict:
     # a model request: the Groq call below carries only the user's own topic (Reddit Developer
     # Terms 7.2 forbids sharing Reddit data with third parties).
     reddit_future = _lookup_executor.submit(reddit.fetch_genre_corpus, topic) if reddit.enabled() else None
+    # Wikipedia pageviews for the topic's genre article (numbers only; never sent to the model).
+    # interest_over_time never raises and answers None when the topic has no genre-level article.
+    interest_future = _lookup_executor.submit(wikipedia.interest_over_time, topic)
 
     try:
         resp = client.chat.completions.create(
@@ -245,6 +259,7 @@ def research_keywords(topic: str) -> dict:
         logger.warning("research_keywords Groq API call failed: %s", e)
         if reddit_future:
             reddit_future.cancel()
+        interest_future.cancel()
         books_future.cancel()  # the answer is an error anyway; don't spend a Books request on it if it hasn't started
         raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
 
@@ -268,6 +283,10 @@ def research_keywords(topic: str) -> dict:
         volumes = volumes + books.lookup_volumes(topic, extra_queries=extra)
         book_entries = books.pick_competitors(topic, volumes, fiction=fiction)
     result["competitors"] = _assemble_competitors(book_entries, result["competitors"])
+
+    interest = _interest_result(interest_future)
+    if interest:
+        result["interest"] = interest
 
     if reddit_future:
         # Match the real Google Books titles (a wider candidate list than the 5 shown) against

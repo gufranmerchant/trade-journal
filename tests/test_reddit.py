@@ -572,6 +572,6 @@ def test_reddit_sections_script_builds_the_dom_without_innerhtml_and_only_links_
 def test_nav_hook_loads_the_reddit_script_only_on_demand_for_the_two_tool_endpoints():
     nav = (STATIC / "js" / "nav.js").read_text(encoding="utf-8")
     assert '"/tools/keyword-research"' in nav and '"/tools/post-ideas"' in nav
-    assert "/static/js/reddit-sections.js" in nav
-    # the script tag is created inside loadRedditSections, never at page load
-    assert nav.count('script.src = "/static/js/reddit-sections.js"') == 1 and 'createElement("script")' in nav
+    assert '"reddit-sections.js"' in nav
+    # the script tag is created inside the on-demand loader, never at page load
+    assert nav.count('script.src = "/static/js/" + file') == 1 and nav.count('createElement("script")') == 1

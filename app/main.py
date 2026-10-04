@@ -53,6 +53,9 @@ below always comes from the verified token, never from the client.
 import logging
 import re
 import time
+import base64
+import html as html_lib
+import secrets
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Depends, Request
@@ -75,6 +78,8 @@ from app import keyword_research as keyword_research_module
 from app import post_ideas as post_ideas_module
 from app import books as books_module
 from app import reddit as reddit_module
+from app import wikipedia as wikipedia_module
+from app import api_usage
 from app.rate_limit import RateLimiter
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
@@ -92,6 +97,8 @@ def _log_integration_config() -> None:
     # deploy logs. Done here rather than at import time, which precedes logging configuration.
     books_module.log_configuration()
     reddit_module.log_configuration()
+    logging.getLogger(__name__).info(
+        "Admin status page: %s", "enabled at /admin/api-usage" if config.ADMIN_TOKEN else "disabled (ADMIN_TOKEN not set)")
 
 
 @app.middleware("http")
@@ -937,6 +944,104 @@ def keyword_research(payload: KeywordResearchRequest, request: Request):
         # technical reason (bad JSON, Groq API failure, ...) is logged
         # server-side by research_keywords itself, not shown to the user.
         raise HTTPException(502, str(e))
+
+
+# Topic autocomplete for the Keyword Research page: Wikipedia genre titles blended with category
+# terms already seen in Google Books results. No model call, so the cap is about being a polite
+# Wikipedia client, not spend; over it, the answer is simply "no suggestions" (never an error).
+_topic_suggestions_limiter = RateLimiter(limit=120, window_seconds=600)
+MAX_SUGGESTION_QUERY_CHARS = 100
+MAX_BOOKS_SUGGESTIONS = 3
+
+
+@app.get("/tools/topic-suggestions")
+def topic_suggestions(q: str, request: Request):
+    q = " ".join((q or "").split())[:MAX_SUGGESTION_QUERY_CHARS]
+    if len(q) < wikipedia_module.MIN_PREFIX_CHARS or not _topic_suggestions_limiter.allow(_client_ip(request)):
+        return {"suggestions": []}
+    wiki = wikipedia_module.suggest(q)
+    from_books = books_module.category_suggestions(q, MAX_BOOKS_SUGGESTIONS)
+    merged, seen = [], set()
+    # Wikipedia titles are the precise matches; reserve the tail for Books category terms.
+    wiki_head = wikipedia_module.MAX_SUGGESTIONS - min(len(from_books), MAX_BOOKS_SUGGESTIONS)
+    for text, source in [(t, "wikipedia") for t in wiki[:wiki_head]] + [(t, "books") for t in from_books] + [(t, "wikipedia") for t in wiki[wiki_head:]]:
+        if text.lower() not in seen and len(merged) < wikipedia_module.MAX_SUGGESTIONS:
+            seen.add(text.lower())
+            merged.append({"text": text, "source": source})
+    return {"suggestions": merged}
+
+
+# ---------------------------------------------------------------- admin: API usage
+
+# Protected with HTTP Basic auth (any username; the password is ADMIN_TOKEN) so a plain browser
+# visit just works - no JS, cookies or secrets in URLs. Unset ADMIN_TOKEN = the routes don't
+# exist. Failed attempts are throttled per IP. Read-only; nothing here changes any state.
+_admin_failures = RateLimiter(limit=10, window_seconds=900)
+
+
+def _require_admin(request: Request) -> None:
+    if not config.ADMIN_TOKEN:
+        raise HTTPException(404, "Not Found")
+    ip = _client_ip(request)
+    if _admin_failures.at_limit(ip):
+        raise HTTPException(429, "Too many failed attempts - try again later.")
+    supplied = ""
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("basic "):
+        try:
+            supplied = base64.b64decode(header[6:]).decode("utf-8").partition(":")[2]
+        except Exception:
+            supplied = ""
+    if not secrets.compare_digest(supplied.encode(), config.ADMIN_TOKEN.encode()):
+        _admin_failures.allow(ip)           # records the failure
+        raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": 'Basic realm="Mirror admin"'})
+
+
+_ADMIN_HEADERS = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
+
+
+@app.get("/admin/api-usage.json", include_in_schema=False)
+def admin_api_usage_json(request: Request):
+    _require_admin(request)
+    return JSONResponse(api_usage.status(), headers=_ADMIN_HEADERS)
+
+
+@app.get("/admin/api-usage", include_in_schema=False)
+def admin_api_usage(request: Request):
+    _require_admin(request)
+    data = api_usage.status()
+    esc = html_lib.escape
+    rows = []
+    for r in data["apis"]:
+        limit = f'{r["limit"]:,}' if r["limit"] else "no published limit"
+        pct = "" if r["percent"] is None else f'{r["percent"]}%'
+        bar = "" if r["percent"] is None else f'<div class="bar"><div class="fill {r["level"]}" style="width:{min(r["percent"], 100)}%"></div></div>'
+        status = {"ok": "OK", "warning": "Warning (80%+)", "critical": "Critical (95%+)", None: "-"}[r["level"]]
+        rows.append(
+            f'<tr><td><strong>{esc(r["label"])}</strong><div class="note">{esc(r["resets_note"])}</div></td>'
+            f'<td>{esc(r["period_kind"])}<div class="note">{esc(r["period"])}</div></td>'
+            f'<td class="num">{r["used"]:,}</td><td class="num">{esc(limit)}</td>'
+            f'<td>{bar}<span class="pct {r["level"] or ""}">{esc(pct)} {esc(status) if r["level"] else ""}</span></td></tr>')
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>API usage</title>
+<style>
+:root{{--bg:#fff;--fg:#14171f;--muted:#5b6475;--line:#d9dde6;--ok:#1c8f5a;--warn:#b7791f;--crit:#c53030}}
+@media (prefers-color-scheme:dark){{:root{{--bg:#0e1116;--fg:#e6e9ef;--muted:#9aa3b2;--line:#2a313c;--ok:#4cc38a;--warn:#e0a84a;--crit:#f06a6a}}}}
+body{{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;margin:0;padding:24px 16px}}
+main{{max-width:860px;margin:0 auto}} h1{{font-size:20px;margin:0 0 4px}} p{{color:var(--muted);margin:4px 0 16px}}
+table{{width:100%;border-collapse:collapse}} th,td{{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}}
+th{{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}} .num{{text-align:right;font-variant-numeric:tabular-nums}}
+.note{{color:var(--muted);font-size:12.5px}} .bar{{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-bottom:4px;min-width:120px}}
+.fill{{height:100%}} .fill.ok{{background:var(--ok)}} .fill.warning{{background:var(--warn)}} .fill.critical{{background:var(--crit)}}
+.pct.ok{{color:var(--ok)}} .pct.warning{{color:var(--warn)}} .pct.critical{{color:var(--crit)}}
+@media (max-width:560px){{th:nth-child(2),td:nth-child(2){{display:none}}}}
+</style></head><body><main>
+<h1>API usage</h1>
+<p>Warnings are logged at {" and ".join(str(l) + "%" for l in data["warn_levels"])} of a limit. Counts are requests sent (cache hits are not requests). Counter storage: {esc(data["persistence"])}.</p>
+<table><thead><tr><th>API</th><th>Period</th><th class="num">Used</th><th class="num">Limit</th><th>Status</th></tr></thead><tbody>
+{"".join(rows)}
+</tbody></table></main></body></html>"""
+    return HTMLResponse(page, headers=_ADMIN_HEADERS)
 
 
 # Same per-IP cost guardrail as /tools/keyword-research above, and for the

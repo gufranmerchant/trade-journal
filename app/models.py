@@ -40,6 +40,16 @@ class User(Base):
     trades = relationship("Trade", back_populates="user")
 
 
+class ApiUsage(Base):
+    """How many requests we have made to one external API in one quota period (see
+    app/api_usage.py). Operational bookkeeping only - no user data."""
+    __tablename__ = "api_usage"
+
+    api = Column(String, primary_key=True)
+    period = Column(String, primary_key=True)   # "2026-10-04" (day) or "2026-10" (month)
+    count = Column(Integer, nullable=False, default=0)
+
+
 class Strategy(Base):
     """
     A user-defined setup (e.g. "Setup A"). This is the heart of the product.

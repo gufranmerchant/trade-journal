@@ -46,6 +46,18 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 REDDIT_ENABLED = _env_flag("REDDIT_ENABLED", default=False)
 
+# --- Operations ---
+# Google Books' free daily quota, for the usage warnings (app/api_usage.py). Google doesn't publish
+# this number in its public docs; 1000/day is the commonly cited default - confirm yours under
+# Cloud Console > APIs & Services > Books API > Quotas and set this if it differs.
+try:
+    GOOGLE_BOOKS_DAILY_LIMIT = int(os.environ.get("GOOGLE_BOOKS_DAILY_LIMIT", "").strip() or "1000")
+except ValueError:
+    GOOGLE_BOOKS_DAILY_LIMIT = 1000
+# Password for the admin status page (/admin/api-usage, HTTP Basic auth: any username, this as the
+# password). Unset = the page doesn't exist (404).
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+
 
 def _clerk_frontend_api(publishable_key: str) -> str:
     """The Clerk frontend-api host the hosted clerk-js script must load from.

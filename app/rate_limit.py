@@ -18,6 +18,11 @@ class RateLimiter:
         self._clock = clock
         self._hits: dict[str, list[float]] = {}
 
+    def at_limit(self, key: str) -> bool:
+        """Whether `key` is currently at the cap, without recording a hit."""
+        now = self._clock()
+        return sum(1 for t in self._hits.get(key, []) if now - t < self.window_seconds) >= self.limit
+
     def allow(self, key: str) -> bool:
         """True and records a hit if `key` is still under the limit for the
         current window; False (no hit recorded) if it's already at the cap."""

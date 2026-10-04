@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 import httpx
 
-from app import config
+from app import api_usage, config
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +112,7 @@ def _fetch_volumes(query: str) -> list[dict]:
     }
     if config.GOOGLE_BOOKS_API_KEY:
         params["key"] = config.GOOGLE_BOOKS_API_KEY
+    api_usage.record("google_books")  # a request is about to be sent (cache hits / open breaker never get here)
     try:
         resp = _client.get(VOLUMES_URL, params=params)
     except httpx.HTTPError as e:  # timeout, connection error, ...
@@ -132,7 +133,51 @@ def _fetch_volumes(query: str) -> list[dict]:
     items = data.get("items") if isinstance(data, dict) else None
     items = items if isinstance(items, list) else []
     logger.info("google books HTTP 200 for %r: %d volumes", query, len(items))
+    _harvest_categories(items)
     return items
+
+
+# ---------------------------------------------------------------- category vocabulary
+
+# Category terms seen in Google Books results so far (a few hundred short strings, in memory, no
+# volume data). The topic autocomplete blends these with Wikipedia titles - data we already fetch,
+# no extra API call per keystroke. Empty after a restart until some lookups have happened.
+MAX_CATEGORY_TERMS = 500
+_category_counts: dict[str, int] = {}
+_GENERIC_CATEGORY_TERMS = {"general", "fiction", "nonfiction", "non-fiction", "juvenile fiction", "juvenile nonfiction", "miscellaneous"}
+
+
+def _category_terms(category: str) -> list[str]:
+    """'Fiction / Mystery & Detective / Cozy / General' -> ['Mystery & Detective', 'Cozy'];
+    'Detective and mystery stories, American' -> ['Detective and mystery stories']."""
+    out = []
+    for part in str(category).split("/"):
+        term = part.split(",")[0].strip()
+        if 2 < len(term) <= 40 and term.lower() not in _GENERIC_CATEGORY_TERMS:
+            out.append(term)
+    return out
+
+
+def _harvest_categories(items: list[dict]) -> None:
+    with _cache_lock:
+        for item in items:
+            info = item.get("volumeInfo") if isinstance(item, dict) else None
+            for category in (info or {}).get("categories") or []:
+                for term in _category_terms(category):
+                    _category_counts[term] = _category_counts.get(term, 0) + 1
+        while len(_category_counts) > MAX_CATEGORY_TERMS:
+            del _category_counts[min(_category_counts, key=_category_counts.get)]
+
+
+def category_suggestions(prefix: str, limit: int = 3) -> list[str]:
+    """Known category terms with a word starting with `prefix`, most frequent first."""
+    p = " ".join(prefix.lower().split())
+    if not p:
+        return []
+    with _cache_lock:
+        hits = [(n, t) for t, n in _category_counts.items()
+                if any(w.startswith(p) for w in re.split(r"[\s/&]+", t.lower())) or t.lower().startswith(p)]
+    return [t for _, t in sorted(hits, key=lambda x: (-x[0], x[1]))[:limit]]
 
 
 def search_volumes(query: str) -> list[dict]:

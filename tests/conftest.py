@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app import books, reddit
+from app import api_usage, books, reddit, wikipedia
 
 
 def _refuse(request):
@@ -16,6 +16,7 @@ def _refuse(request):
 # MockTransport client.
 books._client = httpx.Client(transport=httpx.MockTransport(_refuse))
 reddit._client = httpx.Client(transport=httpx.MockTransport(_refuse))
+wikipedia._client = wikipedia.make_client(httpx.MockTransport(_refuse))
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +26,12 @@ def _reset_external_state(monkeypatch):
     books._cache.clear()
     reddit._cache.clear()
     reddit._dead_subs.clear()
+    wikipedia._cache.clear()
+    books._category_counts.clear()
+    monkeypatch.setattr(wikipedia, "_breaker_until", 0.0)
+    monkeypatch.setattr(api_usage, "persistence_enabled", False)   # tests never touch the database
+    monkeypatch.setattr(api_usage, "_counts", {})
+    monkeypatch.setattr(api_usage, "_warned", set())
     monkeypatch.setattr(books, "_breaker_until", 0.0)
     monkeypatch.setattr(reddit, "_breaker_until", 0.0)
     monkeypatch.setattr(reddit, "_token", None)
