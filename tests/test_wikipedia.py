@@ -101,7 +101,9 @@ def _cozy(wiki, **view_overrides):
     "Literary genre", "Subgenre of crime fiction", "Subgenre of fiction", "Genre of novel",
     "Genre of literature, film, and television", "Nonfiction literary, radio, and film genre",
     "Book of recipes with instructions", "Instructional book for solving personal problems",
-    "Aesthetic of nostalgia popular among youths", "Subculture centered on Gothic and classic education",
+    "Subculture centered on literature and classic education",      # (synthetic) a bookish subculture is still fine
+    "Aesthetic of reading and book collecting",                       # (synthetic) likewise a bookish aesthetic
+    "Literary genre; light counterpart to dark academia",             # real: Light academia, accepted via "genre"
     "19th-century genre of popular novel", "Literature written for adolescents and young adults",
     "Form of literature", "Type of autobiographical or biographical writing",
 ])
@@ -117,6 +119,11 @@ def test_genre_descriptions_are_accepted(description):
     "14th-century Chinese historical novel",                      # a specific work, not a genre
     "American science fiction comedy television series",          # "fiction" must not rescue a TV show
     "Video game genre", "Film genre evoking excitement and suspense",
+    # real descriptions of non-book subcultures / aesthetics that used to leak (Hippie, Body image, Art, ...)
+    "1960s subculture", "Aesthetic perception of one's own body", "Creative work to evoke aesthetic response",
+    "Subculture and aesthetic centered around goblins", "Anti-establishment subculture", "Youth subculture",
+    "Working-class youth subculture", "Subculture interested in anthropomorphic animals",
+    "Subculture defined by claims to authenticity and uniqueness",
     # real Wikipedia short descriptions of music genres that used to leak into the suggestions
     "Music genre", "Genre of music", "Genre of popular music", "Broad genre of popular music", "Music fusion genre",
     "Fusion genre of reggae music and dubstep", "Genre of electronic dance music", "Music genre and subculture",
@@ -298,12 +305,12 @@ def test_suggest_keeps_only_genre_shaped_titles_and_strips_qualifiers(wiki):
 
 
 def test_suggest_rejects_disambiguated_pages_for_other_media(wiki):
-    wiki.search["dark"] = ["Dark academia", "Dark Matter (2024 TV series)", "Epic (novel)"]
+    wiki.search["dark"] = ["Dark fantasy", "Dark Matter (2024 TV series)", "Epic (novel)"]
     wiki.pages.update({
-        "Dark academia": {"description": "Subculture centered on Gothic and classic education"},
+        "Dark fantasy": {"description": "Subgenre of fantasy fiction"},
         "Dark Matter (2024 TV series)": {"description": "Subgenre of science fiction television"},   # genre-ish words, wrong kind of page
     })
-    assert wikipedia.suggest("dark") == ["Dark academia"]
+    assert wikipedia.suggest("dark") == ["Dark fantasy"]
 
 
 def test_suggest_shows_the_title_that_matched_the_typed_text_not_the_redirect_target(wiki):
@@ -410,6 +417,25 @@ def test_continuation_is_bounded(wiki, monkeypatch):
     monkeypatch.setattr(wikipedia, "_client", wikipedia.make_client(httpx.MockTransport(endless)))
     assert wikipedia.suggest("cozy") == ["Cozy mystery"]
     assert len(endless.requests) == 1 + 1 + wikipedia.MAX_CONTINUATIONS
+
+
+def test_subculture_and_aesthetic_alone_are_not_enough_but_genre_still_is():
+    assert not wikipedia.genre_shaped("1960s subculture")
+    assert not wikipedia.genre_shaped("Aesthetic perception of one's own body")
+    assert wikipedia.genre_shaped("Subculture centered on literature")          # + bookish: fine
+    assert wikipedia.genre_shaped("Subgenre of punk rock fiction")              # genre / subgenre / trope stay unconditional
+    assert wikipedia.genre_shaped("Common narrative trope")
+
+
+def test_non_book_subcultures_do_not_leak_into_suggestions(wiki):
+    wiki.search["hip"] = ["Hippie", "Body image", "Art", "Hip hop fiction"]
+    wiki.pages.update({
+        "Hippie": {"description": "1960s subculture", "categories": ["1960s in music"]},
+        "Body image": {"description": "Aesthetic perception of one's own body", "categories": []},
+        "Art": {"description": "Creative work to evoke aesthetic response", "categories": []},
+        "Hip hop fiction": {"description": "Subgenre of urban fiction", "categories": ["Literary genres"]},
+    })
+    assert wikipedia.suggest("hip") == ["Hip hop fiction"]
 
 
 def test_suggest_needs_three_characters_and_makes_no_request_for_less(wiki):

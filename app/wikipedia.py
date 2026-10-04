@@ -158,7 +158,11 @@ def _describe(titles: list[str]) -> dict[str, dict]:
 # nostalgia ...") or a kind of book ("Book of recipes ...", "Instructional book for ..."). A
 # description of one particular work is just "<kind> novel" ("14th-century Chinese historical novel")
 # and is not enough.
-_CATEGORY_WORD_RE = re.compile(r"\b(genre|subgenre|aesthetic|subculture|trope)\b", re.I)
+# "genre", "subgenre" and "trope" are about classifying creative work: sufficient on their own.
+# "subculture" and "aesthetic" are not ("1960s subculture", "Aesthetic perception of one's own body"):
+# they only count when the description is also bookish (_BOOKISH_RE below).
+_CATEGORY_WORD_RE = re.compile(r"\b(genre|subgenre|trope)\b", re.I)
+_SOFT_CATEGORY_WORD_RE = re.compile(r"\b(aesthetic|subculture)\b", re.I)
 _BOOK_TYPE_RE = re.compile(
     r"\b(book|books)\s+(of|for|about|on|that)\b|\b(literature|fiction|nonfiction|non-fiction|writing)\s+(written|about|for|set|that|featuring)\b"
     r"|^(literature|fiction|nonfiction|non-fiction)\b"
@@ -188,7 +192,8 @@ def genre_shaped(description: str, categories=()) -> bool:
         return False
     if not description or _SPECIFIC_WORK_RE.search(description):
         return False
-    if not (_CATEGORY_WORD_RE.search(description) or _BOOK_TYPE_RE.search(description)):
+    if not (_CATEGORY_WORD_RE.search(description) or _BOOK_TYPE_RE.search(description)
+            or (_SOFT_CATEGORY_WORD_RE.search(description) and _BOOKISH_RE.search(description))):
         return False
     if _OTHER_MEDIA_RE.search(description) and not _BOOKISH_RE.search(description):
         return False                        # "Film genre", "Video game genre", "American science fiction television series"
