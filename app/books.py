@@ -151,12 +151,37 @@ _category_counts: dict[str, int] = {}
 _GENERIC_CATEGORY_TERMS = {"general", "fiction", "nonfiction", "non-fiction", "juvenile fiction", "juvenile nonfiction", "miscellaneous"}
 
 
+# A flat (non-hierarchical) BISAC-style string sometimes ends in a one-word locale qualifier:
+# "Detective and mystery stories, American". Only that shape is stripped: "Body, Mind & Spirit" is a
+# real category whose comma is part of its name.
+_LOCALE_SUFFIX_RE = re.compile(r"^(.*\S),\s+([A-Z][a-z]+)$")
+
+
+def _is_nonfiction_bucket(text: str) -> bool:
+    """The broad non-genre buckets already used to keep reference/criticism/self-help titles out of the
+    competitor list (_NONFICTION_CATEGORY_MARKERS), matched the same way: substring of the lowercased text."""
+    lowered = text.lower()
+    return any(m in lowered for m in _NONFICTION_CATEGORY_MARKERS)
+
+
 def _category_terms(category: str) -> list[str]:
     """'Fiction / Mystery & Detective / Cozy / General' -> ['Mystery & Detective', 'Cozy'];
-    'Detective and mystery stories, American' -> ['Detective and mystery stories']."""
+    'Detective and mystery stories, American' -> ['Detective and mystery stories'];
+    'Body, Mind & Spirit' -> ['Body, Mind & Spirit'] (kept whole).
+    Categories in the broad non-genre buckets ('Literary Criticism', 'Social Science', 'Business &
+    Economics', ...) give no terms: they are classifications, not something to suggest as a topic."""
+    category = str(category)
+    if _is_nonfiction_bucket(category):       # the whole string, so "History / Military" and "Art / ..." go too
+        return []
+    parts = category.split("/")
+    flat = len(parts) == 1
     out = []
-    for part in str(category).split("/"):
-        term = part.split(",")[0].strip()
+    for part in parts:
+        term = part.strip()
+        if flat:
+            m = _LOCALE_SUFFIX_RE.match(term)
+            if m:
+                term = m.group(1)
         if 2 < len(term) <= 40 and term.lower() not in _GENERIC_CATEGORY_TERMS:
             out.append(term)
     return out

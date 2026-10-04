@@ -437,3 +437,67 @@ def test_noir_reference_books_seen_live_are_rejected_but_real_noir_fiction_is_ke
 def test_famous_novels_with_film_or_guide_words_in_the_title_are_not_dropped():
     novel = vol("The Hitchhiker's Guide to the Galaxy", ["Douglas Adams"], "A humorous science fiction novel.", ["Fiction / Science Fiction"])
     assert len(books.pick_competitors("science fiction novels", [novel], fiction=True)) == 1
+
+
+# ---------------------------------------------------------------- category vocabulary (topic-suggestion chips)
+
+# Real: what Google returned for a live search on "solarpunk utopia novels" (from the diagnostic log).
+SOLARPUNK_RAW = ["Fiction", "Literary Criticism", "Social Science", "Business & Economics", "Philosophy",
+                 "Body, Mind & Spirit", "Utopias", "Political Science", "Self-Help"]
+
+
+def _kept(categories):
+    out = []
+    for c in categories:
+        out += books._category_terms(c)
+    return out
+
+
+def test_real_solarpunk_categories_keep_only_non_bucket_terms():
+    assert _kept(SOLARPUNK_RAW) == ["Body, Mind & Spirit", "Utopias"]
+
+
+@pytest.mark.parametrize("category", [
+    "Literary Criticism", "Social Science", "Business & Economics", "Philosophy", "Political Science", "Self-Help",
+    "Education", "Reference", "Biography & Autobiography", "Computers", "Psychology", "Study Aids", "Language Arts & Disciplines",
+    "Performing Arts", "Photography", "Authorship",
+    "History / Military / World War II", "Art / Techniques",                  # the slash-form markers apply to the whole string
+    "Juvenile Nonfiction / Social Science / General",                        # a marker anywhere in a hierarchy rejects it
+])
+def test_every_nonfiction_marker_bucket_is_kept_out_of_the_vocabulary(category):
+    assert books._category_terms(category) == []
+
+
+def test_every_marker_in_the_shared_list_is_honoured():
+    # The vocabulary reuses _NONFICTION_CATEGORY_MARKERS (no second copy), so a marker added there
+    # applies here too. A synthetic category built from each marker must give no terms.
+    for marker in books._NONFICTION_CATEGORY_MARKERS:
+        assert books._category_terms(f"x {marker} y") == [], marker
+
+
+def test_commas_inside_a_category_name_survive():
+    assert books._category_terms("Body, Mind & Spirit") == ["Body, Mind & Spirit"]
+    assert books._category_terms("Fiction / Romance / Regency") == ["Romance", "Regency"]
+
+
+@pytest.mark.parametrize("category,terms", [
+    ("Detective and mystery stories, American", ["Detective and mystery stories"]),    # a one-word locale qualifier is stripped
+    ("Fantasy fiction, English", ["Fantasy fiction"]),
+    ("Love stories, Mind & Spirit", ["Love stories, Mind & Spirit"]),               # not a one-word qualifier: kept whole
+    ("Fiction / Mystery & Detective / Cozy / General", ["Mystery & Detective", "Cozy"]),
+    ("Fiction / Detective stories, American / Cozy", ["Detective stories, American", "Cozy"]),   # hierarchical: nothing is stripped
+])
+def test_locale_suffix_is_stripped_only_from_flat_strings_with_a_single_trailing_word(category, terms):
+    assert books._category_terms(category) == terms
+
+
+def test_generic_terms_are_still_dropped():
+    assert _kept(["Fiction", "General", "Juvenile Fiction", "Nonfiction"]) == []
+
+
+def test_harvest_and_suggestions_use_the_filtered_vocabulary():
+    books._harvest_categories([{"volumeInfo": {"categories": SOLARPUNK_RAW}}])
+    assert books.category_suggestions("utop") == ["Utopias"]
+    for prefix in ("lit", "soc", "bus", "phil", "pol", "self"):
+        assert books.category_suggestions(prefix) == [], prefix
+    assert books.category_suggestions("body") == ["Body, Mind & Spirit"]
