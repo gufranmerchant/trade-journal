@@ -470,6 +470,10 @@ def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITO
         rank = (rel * 10 + RECENCY_WEIGHT * _recency(info)
                 + math.log1p(info.get("ratingsCount") or 0) * 0.5 + (1.0 if has_description else 0.0))
         candidates.append((rank, book))
+        # One line per ranked candidate, so ranking can be audited from the deploy logs (real before/after of the
+        # recency term). Book metadata only; the topic is the user's own query. Filtered-out volumes don't log.
+        logger.info("book rank: topic=%r rank=%.2f rel=%.2f recency=%.2f ratings=%s year=%s title=%r",
+                    topic, rank, rel, _recency(info), info.get("ratingsCount") or 0, _published_year(info) or "?", book["title"])
     candidates.sort(key=lambda c: c[0], reverse=True)
 
     results = []

@@ -1,6 +1,8 @@
 """Google Books competitor lookup. Fixtures follow the real API's response schema
 (items[].volumeInfo with title/subtitle/authors/description/categories/...).
 No test touches the network: see conftest.py."""
+import logging
+import re
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -619,3 +621,21 @@ def test_relevance_threshold_and_per_author_cap_are_unchanged(now2026):
     same = [vol(f"Cozy Mystery Volume {i}", authors=("Same Author",), year="2024", description=DESC) for i in range(4)]
     assert len(_rank("cozy mystery", same)) == 2
     assert _rank("cozy mystery", [vol("Gardening for Beginners", year="2024", description=DESC)]) == []
+
+
+def test_each_ranked_candidate_logs_one_audit_line_and_filtered_ones_do_not(now2026, caplog):
+    caplog.set_level(logging.INFO, logger="app.books")
+    old = vol("The Vicarage Puzzle: A Cozy Mystery", authors=("A",), year="1948", count=3, description=DESC)
+    new = vol("The Bakery Murders: A Cozy Mystery", authors=("B",), year="2023", count=0, description=DESC)
+    undated = vol("Undated Cozy Mystery", authors=("C",), description=DESC)
+    del undated["volumeInfo"]["publishedDate"]
+    irrelevant = vol("Gardening for Beginners", authors=("D",), year="2024", description=DESC)
+    books.pick_competitors("cozy mystery", [old, new, undated, irrelevant])
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("book rank:")]
+    assert len(lines) == 3                                                       # the irrelevant volume was filtered before ranking
+    by_title = {re.search(r"title='([^']+)'", l).group(1): l for l in lines}
+    assert "year=1948" in by_title["The Vicarage Puzzle: A Cozy Mystery"] and "recency=0.05" in by_title["The Vicarage Puzzle: A Cozy Mystery"]
+    assert "year=2023" in by_title["The Bakery Murders: A Cozy Mystery"] and "recency=1.00" in by_title["The Bakery Murders: A Cozy Mystery"]
+    assert "year=?" in by_title["Undated Cozy Mystery"] and "recency=0.40" in by_title["Undated Cozy Mystery"]
+    assert all("topic='cozy mystery'" in l and re.search(r"rank=\d+\.\d\d rel=1\.00", l) for l in lines)
+    assert "Gardening" not in caplog.text
