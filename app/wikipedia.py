@@ -163,6 +163,17 @@ def _describe(titles: list[str]) -> dict[str, dict]:
 # they only count when the description is also bookish (_BOOKISH_RE below).
 _CATEGORY_WORD_RE = re.compile(r"\b(genre|subgenre|trope)\b", re.I)
 _SOFT_CATEGORY_WORD_RE = re.compile(r"\b(aesthetic|subculture)\b", re.I)
+# ...or when the article's own categories are bookish. Same vocabulary as _BOOKISH_RE plus "fiction":
+# that word is fine in a category ("Cozy fiction") but must not rescue a description, where it would
+# let "science fiction television series" through the media exclusion below.
+_BOOKISH_CATEGORY_RE = re.compile(r"\b(literature|literary|novels?|books?|prose|fiction)\b", re.I)
+# A deliberate, hand-maintained exception list (not a general rule): topic keys that ARE book-relevant
+# aesthetics but that Wikipedia describes without any bookish word and files under no bookish category,
+# so neither check above can see it. Matched against the article title's key; add an entry only with a reason.
+_KNOWN_BOOKISH_AESTHETICS = {
+    "dark academia",     # the BookTok / campus-novel aesthetic; Wikipedia: "Subculture centered on Gothic and classic
+                         # education", categories contain nothing bookish
+}
 _BOOK_TYPE_RE = re.compile(
     r"\b(book|books)\s+(of|for|about|on|that)\b|\b(literature|fiction|nonfiction|non-fiction|writing)\s+(written|about|for|set|that|featuring)\b"
     r"|^(literature|fiction|nonfiction|non-fiction)\b"
@@ -187,13 +198,20 @@ def _is_music_category(categories) -> bool:
     return any(m in str(c).lower() for c in categories or () for m in _MUSIC_CATEGORY_MARKERS)
 
 
-def genre_shaped(description: str, categories=()) -> bool:
+def _soft_but_bookish(description: str, categories) -> bool:
+    """A "subculture"/"aesthetic" description, backed by a bookish word in it or in the article's categories."""
+    return bool(_SOFT_CATEGORY_WORD_RE.search(description)
+                and (_BOOKISH_RE.search(description) or any(_BOOKISH_CATEGORY_RE.search(str(c)) for c in categories or ())))
+
+
+def genre_shaped(description: str, categories=(), title: str = "") -> bool:
     if _is_music_category(categories):
         return False
     if not description or _SPECIFIC_WORK_RE.search(description):
         return False
+    known = _key(_words(title)) in _KNOWN_BOOKISH_AESTHETICS if title else False
     if not (_CATEGORY_WORD_RE.search(description) or _BOOK_TYPE_RE.search(description)
-            or (_SOFT_CATEGORY_WORD_RE.search(description) and _BOOKISH_RE.search(description))):
+            or _soft_but_bookish(description, categories) or known):
         return False
     if _OTHER_MEDIA_RE.search(description) and not _BOOKISH_RE.search(description):
         return False                        # "Film genre", "Video game genre", "American science fiction television series"
@@ -254,7 +272,7 @@ def find_genre_article(topic: str) -> dict | None:
     described = _describe(candidates)
     for requested in candidates:
         info = described.get(requested)
-        if info and not info["disambiguation"] and genre_shaped(info["description"], info["categories"]):
+        if info and not info["disambiguation"] and genre_shaped(info["description"], info["categories"], requested):
             # `redirected_from` is set when Wikipedia itself redirects the matched title to another
             # article (e.g. "Epic fantasy" -> "High fantasy"), so the UI can say which page is measured.
             same = _key(_words(requested)) == _key(_words(info["title"]))
@@ -347,7 +365,7 @@ def suggest(prefix: str, limit: int = MAX_SUGGESTIONS) -> list[str]:
             out, seen = [], set()
             for requested, info in sorted(_describe(titles).items(), key=lambda kv: titles.index(kv[0])):
                 text = _display(requested)      # the title that matched the typed text (a redirect's own name), not its target
-                if (info["disambiguation"] or not _qualifier_ok(requested) or not genre_shaped(info["description"], info["categories"])
+                if (info["disambiguation"] or not _qualifier_ok(requested) or not genre_shaped(info["description"], info["categories"], requested)
                         or text.lower() in seen):
                     continue
                 seen.add(text.lower())

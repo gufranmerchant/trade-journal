@@ -438,6 +438,87 @@ def test_non_book_subcultures_do_not_leak_into_suggestions(wiki):
     assert wikipedia.suggest("hip") == ["Hip hop fiction"]
 
 
+# ---- rescuing book-adjacent aesthetics: a bookish category, or the small explicit allowlist
+
+# Real Wikipedia data.
+COTTAGECORE = {"description": "Aesthetic of nostalgia popular among youths",
+               "categories": ["Cozy fiction", "Cottagecore", "Internet culture"]}                    # (trimmed) real: has "Cozy fiction"
+DARK_ACADEMIA = {"description": "Subculture centered on Gothic and classic education", "categories": ["Aesthetics", "Gothic culture"]}
+HIPPIE = {"description": "1960s subculture", "categories": ["1960s in music", "1970s in music", "Music and fashion", "Hippie"]}
+
+
+def test_a_bookish_category_rescues_a_subculture_or_aesthetic_description():
+    assert not wikipedia.genre_shaped(COTTAGECORE["description"])                                    # no help from the description alone
+    assert wikipedia.genre_shaped(COTTAGECORE["description"], COTTAGECORE["categories"])
+    for category in ("Cozy fiction", "Literary subcultures", "Books about gardening", "Prose styles", "Young adult novels"):
+        assert wikipedia.genre_shaped("Subculture of readers", [category]), category
+
+
+def test_non_book_subcultures_stay_out_even_with_ordinary_categories():
+    assert not wikipedia.genre_shaped(HIPPIE["description"], HIPPIE["categories"])
+    for desc, cats in [("Aesthetic perception of one's own body", ["Body image", "Human body"]),
+                       ("Creative work to evoke aesthetic response", ["Art", "Aesthetics"]),
+                       ("Youth subculture", ["2000s in music", "Musical subcultures"]),
+                       ("Subculture composed of fans sharing a common interest", ["Fandom", "Fan culture"])]:
+        assert not wikipedia.genre_shaped(desc, cats), desc
+
+
+def test_fictional_is_not_fiction_in_a_category():
+    assert not wikipedia.genre_shaped("Subculture and aesthetic centered around goblins", ["Fictional goblins", "Fantasy creatures"])
+
+
+def test_the_category_vocabulary_does_not_loosen_the_description_side():
+    # "fiction" is accepted in a CATEGORY but must still not rescue a media DESCRIPTION
+    assert not wikipedia.genre_shaped("American science fiction television series", ["Science fiction television"])
+    # genre-shaped (so only the media rule can reject it) and "fiction" is its only would-be rescuer
+    assert not wikipedia.genre_shaped("Subgenre of science fiction television")
+    assert wikipedia.genre_shaped("Subgenre of science fiction literature")
+
+
+def test_the_allowlist_admits_dark_academia_which_has_no_bookish_signal_at_all():
+    assert not wikipedia.genre_shaped(DARK_ACADEMIA["description"], DARK_ACADEMIA["categories"])      # without the allowlist: out
+    assert wikipedia.genre_shaped(DARK_ACADEMIA["description"], DARK_ACADEMIA["categories"], "Dark academia")
+    assert wikipedia.genre_shaped(DARK_ACADEMIA["description"], DARK_ACADEMIA["categories"], "dark-academia")   # matched by topic key
+
+
+def test_the_allowlist_is_small_explicit_and_exact():
+    assert wikipedia._KNOWN_BOOKISH_AESTHETICS == {"dark academia"}
+    for other in ("Light academia", "Academia", "Goblincore", "Dark", "Dark academia aesthetic", "Hippie"):
+        assert not wikipedia.genre_shaped(DARK_ACADEMIA["description"], DARK_ACADEMIA["categories"], other), other
+
+
+def test_the_allowlist_does_not_bypass_the_other_rules():
+    # it only waives the "is this genre-shaped?" requirement: music, specific works and media still reject
+    assert not wikipedia.genre_shaped("Subculture centered on Gothic music", ["Gothic music genres"], "Dark academia")
+    assert not wikipedia.genre_shaped("2019 television series by Jane Doe", [], "Dark academia")
+    assert not wikipedia.genre_shaped("", [], "Dark academia")
+
+
+def test_dark_academia_and_cottagecore_appear_in_suggestions(wiki):
+    wiki.search["dark ac"] = ["Dark academia", "Hippie"]
+    wiki.search["cotta"] = ["Cottagecore", "Cottage"]
+    wiki.pages.update({"Dark academia": DARK_ACADEMIA, "Cottagecore": COTTAGECORE, "Hippie": HIPPIE,
+                       "Cottage": {"description": "Dwelling type", "categories": []}})
+    assert wikipedia.suggest("dark ac") == ["Dark academia"]
+    assert wikipedia.suggest("cotta") == ["Cottagecore"]
+
+
+def test_interest_over_time_is_back_for_dark_academia_and_cottagecore(wiki):
+    for name, page in (("Dark academia", DARK_ACADEMIA), ("Cottagecore", COTTAGECORE)):
+        wiki.search[name.lower()] = [name]
+        wiki.pages[name] = page
+        wiki.views[name] = _steady_views()
+        result = wikipedia.interest_over_time(name.lower(), today=TODAY)
+        assert result and result["article"]["title"] == name
+
+
+def test_interest_is_still_omitted_for_a_non_book_subculture(wiki):
+    wiki.search["hippie"] = ["Hippie"]
+    wiki.pages["Hippie"] = HIPPIE
+    wiki.views["Hippie"] = _steady_views()
+    assert wikipedia.interest_over_time("hippie", today=TODAY) is None
+
+
 def test_suggest_needs_three_characters_and_makes_no_request_for_less(wiki):
     assert wikipedia.suggest("co") == [] and wiki.requests == []
 
