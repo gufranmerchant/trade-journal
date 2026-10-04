@@ -233,3 +233,26 @@ def test_google_books_categories_are_collected_for_suggestions(monkeypatch):
     assert books.category_suggestions("coz") == ["Cozy"]
     assert books.category_suggestions("mys") == ["Mystery & Detective"]
     assert books.category_suggestions("gener") == []             # "General" is dropped as meaningless
+
+
+def test_one_log_line_per_real_request_shows_raw_and_kept_categories(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="app.books")
+    items = [{"id": "1", "volumeInfo": {"title": "A", "categories": ["Fiction"]}},
+             {"id": "2", "volumeInfo": {"title": "B", "categories": ["Fiction / Mystery & Detective / Cozy / General"]}},
+             {"id": "3", "volumeInfo": {"title": "C"}}]
+    _books_client(monkeypatch, body={"items": items})
+    books.search_volumes("cozy mystery")
+    books.search_volumes("cozy mystery")                                    # cache hit: no second line
+    lines = [r.getMessage() for r in caplog.records if "google books categories" in r.getMessage()]
+    assert len(lines) == 1
+    assert "2/3 volumes had any" in lines[0]
+    assert "'Fiction'" in lines[0] and "Fiction / Mystery & Detective / Cozy / General" in lines[0]   # raw, as Google sent it
+    assert "kept=['Mystery & Detective', 'Cozy']" in lines[0]                                         # "Fiction"/"General" filtered
+
+
+def test_generic_only_categories_log_an_empty_kept_list(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="app.books")
+    _books_client(monkeypatch, body={"items": [{"id": "1", "volumeInfo": {"title": "A", "categories": ["Fiction"]}}]})
+    books.search_volumes("anything")
+    line = next(r.getMessage() for r in caplog.records if "google books categories" in r.getMessage())
+    assert "raw=['Fiction'] kept=[]" in line

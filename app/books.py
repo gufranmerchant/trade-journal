@@ -133,7 +133,11 @@ def _fetch_volumes(query: str) -> list[dict]:
     items = data.get("items") if isinstance(data, dict) else None
     items = items if isinstance(items, list) else []
     logger.info("google books HTTP 200 for %r: %d volumes", query, len(items))
-    _harvest_categories(items)
+    raw, kept = _harvest_categories(items)
+    # One line per real request, so a missing category blend can be diagnosed from the deploy logs:
+    # what Google actually returned (raw) vs. what survived our filter and reached the suggestions (kept).
+    logger.info("google books categories for %r: %d/%d volumes had any; raw=%s kept=%s",
+                query, raw["with_categories"], len(items), raw["distinct"][:10], kept[:10])
     return items
 
 
@@ -158,15 +162,26 @@ def _category_terms(category: str) -> list[str]:
     return out
 
 
-def _harvest_categories(items: list[dict]) -> None:
+def _harvest_categories(items: list[dict]) -> tuple[dict, list[str]]:
+    """Adds the usable category terms to the vocabulary. Returns (what Google sent, the terms kept) so
+    the caller can log them: {"with_categories": volumes that had any, "distinct": raw category strings}."""
+    distinct: dict[str, int] = {}
+    kept: dict[str, int] = {}
+    with_categories = 0
     with _cache_lock:
         for item in items:
             info = item.get("volumeInfo") if isinstance(item, dict) else None
-            for category in (info or {}).get("categories") or []:
+            categories = (info or {}).get("categories") or []
+            with_categories += bool(categories)
+            for category in categories:
+                distinct[str(category)] = distinct.get(str(category), 0) + 1
                 for term in _category_terms(category):
+                    kept[term] = kept.get(term, 0) + 1
                     _category_counts[term] = _category_counts.get(term, 0) + 1
         while len(_category_counts) > MAX_CATEGORY_TERMS:
             del _category_counts[min(_category_counts, key=_category_counts.get)]
+    by_count = lambda d: [k for k, _ in sorted(d.items(), key=lambda kv: -kv[1])]
+    return {"with_categories": with_categories, "distinct": by_count(distinct)}, by_count(kept)
 
 
 def category_suggestions(prefix: str, limit: int = 3) -> list[str]:
