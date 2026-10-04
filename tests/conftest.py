@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app import api_usage, books, reddit, wikipedia
+from app import api_usage, bluesky, books, reddit, wikipedia
 
 
 def _refuse(request):
@@ -17,6 +17,7 @@ def _refuse(request):
 books._client = httpx.Client(transport=httpx.MockTransport(_refuse))
 reddit._client = httpx.Client(transport=httpx.MockTransport(_refuse))
 wikipedia._client = wikipedia.make_client(httpx.MockTransport(_refuse))
+bluesky._client = httpx.Client(transport=httpx.MockTransport(_refuse))
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +28,8 @@ def _reset_external_state(monkeypatch):
     reddit._cache.clear()
     reddit._dead_subs.clear()
     wikipedia._cache.clear()
+    bluesky._cache.clear()
+    monkeypatch.setattr(bluesky, "_breaker_until", 0.0)
     books._category_counts.clear()
     monkeypatch.setattr(wikipedia, "_breaker_until", 0.0)
     monkeypatch.setattr(api_usage, "persistence_enabled", False)   # tests never touch the database

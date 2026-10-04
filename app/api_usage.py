@@ -49,6 +49,7 @@ def _specs() -> dict[str, ApiSpec]:
     return {
         "google_books": ApiSpec("Google Books API", "day", config.GOOGLE_BOOKS_DAILY_LIMIT,
                                 tz="America/Los_Angeles", resets_note="Google quotas reset at midnight Pacific time"),
+        "bluesky": ApiSpec("Bluesky API", "day", None, resets_note="no published cap - counted for visibility only"),
         "wikipedia": ApiSpec("Wikipedia / Wikimedia APIs", "day", None,
                              resets_note="no published cap - counted for visibility only"),
     }

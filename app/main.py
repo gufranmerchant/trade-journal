@@ -78,6 +78,7 @@ from app import keyword_research as keyword_research_module
 from app import post_ideas as post_ideas_module
 from app import books as books_module
 from app import reddit as reddit_module
+from app import bluesky as bluesky_module
 from app import wikipedia as wikipedia_module
 from app import api_usage
 from app.rate_limit import RateLimiter
@@ -97,6 +98,7 @@ def _log_integration_config() -> None:
     # deploy logs. Done here rather than at import time, which precedes logging configuration.
     books_module.log_configuration()
     reddit_module.log_configuration()
+    bluesky_module.log_configuration()
     logging.getLogger(__name__).info(
         "Admin status page: %s", "enabled at /admin/api-usage" if config.ADMIN_TOKEN else "disabled (ADMIN_TOKEN not set)")
 

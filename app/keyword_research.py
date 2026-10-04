@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from groq import APIError, Groq
 
-from app import books, reddit, wikipedia
+from app import bluesky, books, reddit, wikipedia
 from app.config import GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
@@ -240,6 +240,8 @@ def research_keywords(topic: str) -> dict:
     # Wikipedia pageviews for the topic's genre article (numbers only; never sent to the model).
     # interest_over_time never raises and answers None when the topic has no genre-level article.
     interest_future = _lookup_executor.submit(wikipedia.interest_over_time, topic)
+    # Recent Bluesky posts, displayed as posted (display-only: never sent to the model either).
+    bluesky_future = _lookup_executor.submit(bluesky.fetch_genre_posts, topic) if bluesky.enabled() else None
 
     try:
         resp = client.chat.completions.create(
@@ -260,6 +262,8 @@ def research_keywords(topic: str) -> dict:
         if reddit_future:
             reddit_future.cancel()
         interest_future.cancel()
+        if bluesky_future:
+            bluesky_future.cancel()
         books_future.cancel()  # the answer is an error anyway; don't spend a Books request on it if it hasn't started
         raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
 
@@ -287,6 +291,10 @@ def research_keywords(topic: str) -> dict:
     interest = _interest_result(interest_future)
     if interest:
         result["interest"] = interest
+    if bluesky_future:
+        posts = _interest_result(bluesky_future)    # same optional-section wait; None on timeout or error
+        if posts:
+            result["bluesky"] = posts
 
     if reddit_future:
         # Match the real Google Books titles (a wider candidate list than the 5 shown) against

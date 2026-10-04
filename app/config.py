@@ -46,6 +46,10 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 REDDIT_ENABLED = _env_flag("REDDIT_ENABLED", default=False)
 
+# Bluesky posts in Keyword Research (display-only, no key needed). OFF BY DEFAULT: Bluesky's terms are
+# silent on third-party / commercial use, so this stays opt-in until that is decided.
+BLUESKY_ENABLED = _env_flag("BLUESKY_ENABLED", default=False)
+
 # --- Operations ---
 # Google Books' free daily quota, for the usage warnings (app/api_usage.py). Google doesn't publish
 # this number in its public docs; 1000/day is the commonly cited default - confirm yours under

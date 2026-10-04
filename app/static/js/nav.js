@@ -230,7 +230,7 @@
   // always removed first.
   // ---------------------------------------------------------------------
   const TOOL_RESPONSE_PATHS = ["/tools/keyword-research", "/tools/post-ideas"];
-  const OPTIONAL_SECTION_SELECTOR = "[data-reddit-section],[data-interest-section]";
+  const OPTIONAL_SECTION_SELECTOR = "[data-reddit-section],[data-interest-section],[data-bluesky-section]";
   const scriptVersion = (() => {
     const src = document.currentScript && document.currentScript.src;  // same ?v= cache-bust as this file
     const m = src && src.match(/\?v=\d+/);
@@ -258,6 +258,9 @@
     wrap.querySelectorAll(OPTIONAL_SECTION_SELECTOR).forEach((n) => n.remove());
     if (data.interest) {
       loadOptionalScript("interest-section.js", "MirrorInterest").then((m) => m.render(data)).catch(() => {});
+    }
+    if (data.bluesky) {
+      loadOptionalScript("bluesky-section.js", "MirrorBluesky").then((m) => m.render(data)).catch(() => {});
     }
     if (data.reddit || data.trending) {
       loadOptionalScript("reddit-sections.js", "MirrorReddit")
