@@ -360,6 +360,7 @@ _NONFICTION_CATEGORY_MARKERS = (
     "literary criticism", "authorship", "language arts", "reference", "study aids", "education",
     "performing arts", "self-help", "business", "social science", "biography", "computers",
     "art /", "photography", "history /", "psychology", "philosophy", "political science",
+    "body, mind & spirit",
 )
 _JUVENILE_CATEGORY_PREFIXES = ("juvenile", "young adult")
 _YOUNG_READER_TOPIC_RE = re.compile(r"\b(children|child|kids?|juvenile|teens?|young adult|ya|middle grade|picture)\b", re.I)

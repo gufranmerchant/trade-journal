@@ -106,6 +106,10 @@ def test_genre_descriptions_are_accepted(description):
     "14th-century Chinese historical novel",                      # a specific work, not a genre
     "American science fiction comedy television series",          # "fiction" must not rescue a TV show
     "Video game genre", "Film genre evoking excitement and suspense",
+    # real Wikipedia short descriptions of music genres that used to leak into the suggestions
+    "Music genre", "Genre of music", "Genre of popular music", "Broad genre of popular music", "Music fusion genre",
+    "Fusion genre of reggae music and dubstep", "Genre of electronic dance music", "Music genre and subculture",
+    "Subculture including music, dance and graffiti", "Genre of hip hop style music", "Music genre originating in 1860s",
 ])
 def test_non_genre_descriptions_are_rejected(description):
     assert not wikipedia.genre_shaped(description)
@@ -296,6 +300,26 @@ def test_suggest_shows_the_title_that_matched_the_typed_text_not_the_redirect_ta
     wiki.redirects["Cozy catastrophe"] = "Apocalyptic and post-apocalyptic fiction"
     wiki.pages["Apocalyptic and post-apocalyptic fiction"] = {"description": "Genre of fiction"}
     assert wikipedia.suggest("cozy") == ["Cozy catastrophe"]
+
+
+def test_music_genres_do_not_leak_into_suggestions_but_book_genres_still_do(wiki):
+    # Real titles and descriptions returned for the prefix "reg" (the leak that prompted this test).
+    wiki.search["reg"] = ["Reggaeton", "Reggae", "Reggae rock", "Regency romance", "Regency era"]
+    wiki.pages.update({
+        "Reggaeton": {"description": "Music genre"},
+        "Reggae": {"description": "Music genre"},
+        "Reggae rock": {"description": "Music genre"},
+        "Regency romance": {"description": "Subgenre of romance fiction"},
+    })
+    assert wikipedia.suggest("reg") == ["Regency romance"]
+
+
+def test_the_literature_rescue_still_beats_the_music_exclusion():
+    # Not a real Wikipedia description (none exists today): it pins that _BOOKISH_RE is still the
+    # escape hatch for a description mentioning both, exactly as it is for "film".
+    assert wikipedia.genre_shaped("Genre of music and literature")
+    assert wikipedia.genre_shaped("Genre of literature, film, and television")
+    assert not wikipedia.genre_shaped("Genre of popular music")
 
 
 def test_suggest_needs_three_characters_and_makes_no_request_for_less(wiki):

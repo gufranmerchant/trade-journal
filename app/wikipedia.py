@@ -148,7 +148,7 @@ _BOOK_TYPE_RE = re.compile(
 # "fiction" alone does not ("American science fiction television series").
 _BOOKISH_RE = re.compile(r"\b(literature|literary|novels?|books?|prose)\b", re.I)
 _OTHER_MEDIA_RE = re.compile(
-    r"\b(film|films|television|tv|series|album|albums|band|song|songs|musical|video game|game|anime|manga|"
+    r"\b(film|films|television|tv|series|album|albums|band|song|songs|music|musical|video game|game|anime|manga|"
     r"musician|singer|rapper|artist|company)\b", re.I)
 # A description of one particular work or person ("1925 novel by F. Scott Fitzgerald"), not a genre.
 _SPECIFIC_WORK_RE = re.compile(r"\b(1[0-9]{3}|20[0-9]{2})\b|\bby\s+[A-Z]")

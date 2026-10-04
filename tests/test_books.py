@@ -454,7 +454,7 @@ def _kept(categories):
 
 
 def test_real_solarpunk_categories_keep_only_non_bucket_terms():
-    assert _kept(SOLARPUNK_RAW) == ["Body, Mind & Spirit", "Utopias"]
+    assert _kept(SOLARPUNK_RAW) == ["Utopias"]
 
 
 @pytest.mark.parametrize("category", [
@@ -475,9 +475,19 @@ def test_every_marker_in_the_shared_list_is_honoured():
         assert books._category_terms(f"x {marker} y") == [], marker
 
 
-def test_commas_inside_a_category_name_survive():
+def test_commas_inside_a_category_name_survive(monkeypatch):
+    # "Body, Mind & Spirit" is parsed as ONE term (the comma is part of its name) ...
+    monkeypatch.setattr(books, "_NONFICTION_CATEGORY_MARKERS",
+                        tuple(m for m in books._NONFICTION_CATEGORY_MARKERS if m != "body, mind & spirit"))
     assert books._category_terms("Body, Mind & Spirit") == ["Body, Mind & Spirit"]
     assert books._category_terms("Fiction / Romance / Regency") == ["Romance", "Regency"]
+
+
+def test_body_mind_and_spirit_is_a_non_genre_bucket_like_self_help():
+    # ... and, with the real markers, is then filtered out the same way "Self-Help" is.
+    assert "body, mind & spirit" in books._NONFICTION_CATEGORY_MARKERS
+    assert books._category_terms("Body, Mind & Spirit") == [] == books._category_terms("Self-Help")
+    assert books._category_terms("Body, Mind & Spirit / Healing / General") == []
 
 
 @pytest.mark.parametrize("category,terms", [
@@ -500,4 +510,4 @@ def test_harvest_and_suggestions_use_the_filtered_vocabulary():
     assert books.category_suggestions("utop") == ["Utopias"]
     for prefix in ("lit", "soc", "bus", "phil", "pol", "self"):
         assert books.category_suggestions(prefix) == [], prefix
-    assert books.category_suggestions("body") == ["Body, Mind & Spirit"]
+    assert books.category_suggestions("body") == []                       # the bucket is no longer suggested
