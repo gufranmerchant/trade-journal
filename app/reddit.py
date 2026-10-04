@@ -13,8 +13,8 @@ Hard rules this module exists to uphold (Reddit Developer Terms 7.2, 2.4, 7.3):
   returned, logged or persisted. Comments are never fetched.
 * No persistence of any kind: no database, no files, and logs carry counts and status codes
   only - never titles or bodies. The in-memory cache expires after CACHE_TTL_SECONDS.
-* Free-tier Reddit API access is non-commercial. Everything is behind REDDIT_ENABLED and
-  every failure degrades to "section omitted", so it can be switched off (or lost) without
+* Free-tier Reddit API access is non-commercial. Everything is behind REDDIT_ENABLED (OFF by
+  default; credentials alone do not enable it) and every failure degrades to "section omitted", so it can be switched off (or lost) without
   breaking either tool.
 
 Access is OAuth "application only" (client_credentials) with an app registered at

@@ -28,11 +28,23 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY", "")
 # Optional: Reddit threads in Keyword Research / Post Idea Finder (app/reddit.py). Needs an app
 # registered at reddit.com/prefs/apps; without credentials those sections are simply omitted.
-# REDDIT_ENABLED=0 switches the integration off without removing the credentials.
+# OFF BY DEFAULT: it only runs when REDDIT_ENABLED is explicitly set to 1/true/yes/on AND both
+# credentials are present, so adding credentials alone never switches it on. (Free-tier Reddit API
+# use is non-commercial and the commercial-use question is unresolved, hence opt-in.)
 REDDIT_CLIENT_ID = os.environ.get("REDDIT_CLIENT_ID", "").strip()
 REDDIT_CLIENT_SECRET = os.environ.get("REDDIT_CLIENT_SECRET", "").strip()
 REDDIT_USERNAME = os.environ.get("REDDIT_USERNAME", "").strip()  # for the User-Agent Reddit requires
-REDDIT_ENABLED = os.environ.get("REDDIT_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """A true/false environment variable; anything unrecognised (or unset) means `default`."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+REDDIT_ENABLED = _env_flag("REDDIT_ENABLED", default=False)
 
 
 def _clerk_frontend_api(publishable_key: str) -> str:

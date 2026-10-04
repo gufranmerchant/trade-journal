@@ -500,3 +500,33 @@ def test_startup_hook_logs_both_integrations_redacted(caplog):
         pass
     assert "GOOGLE_BOOKS_API_KEY:" in caplog.text and "Reddit integration: configured" in caplog.text
     assert "secretsecret999" not in caplog.text and "idid1234" not in caplog.text
+
+
+# ------------------------------------------------------------------ the feature flag is opt-in
+
+@pytest.mark.parametrize("raw, expected", [
+    (None, False), ("", False), ("  ", False), ("0", False), ("false", False), ("off", False), ("banana", False),
+    ("1", True), ("true", True), ("TRUE", True), (" yes ", True), ("on", True),
+])
+def test_env_flag_parsing_is_off_unless_explicitly_on(monkeypatch, raw, expected):
+    from app import config
+    if raw is None:
+        monkeypatch.delenv("X_TEST_FLAG", raising=False)
+    else:
+        monkeypatch.setenv("X_TEST_FLAG", raw)
+    assert config._env_flag("X_TEST_FLAG") is expected
+
+
+def test_the_shipped_default_is_off_and_credentials_alone_do_not_enable_reddit(monkeypatch):
+    # A fresh interpreter with NO Reddit variables set: the default must be off...
+    import subprocess, sys
+    env = {k: v for k, v in __import__("os").environ.items() if not k.startswith("REDDIT_")}
+    code = ("from app import config, reddit; "
+            "print(config.REDDIT_ENABLED, reddit.enabled()); "
+            "config.REDDIT_CLIENT_ID, config.REDDIT_CLIENT_SECRET = 'id', 'secret'; "
+            "print(reddit.enabled())")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=str(Path(reddit.__file__).parent.parent)).stdout.split()
+    assert out == ["False", "False", "False"]       # default off; still off after credentials are added
+    # ...and the template tells people the same
+    template = (Path(reddit.__file__).parent.parent / ".env.example").read_text(encoding="utf-8")
+    assert re.search(r"^REDDIT_ENABLED=0\s*$", template, re.M)
