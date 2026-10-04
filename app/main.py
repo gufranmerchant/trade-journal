@@ -73,6 +73,8 @@ from app import kdp
 from app import ads_analyser as ads_analyser_module
 from app import keyword_research as keyword_research_module
 from app import post_ideas as post_ideas_module
+from app import books as books_module
+from app import reddit as reddit_module
 from app.rate_limit import RateLimiter
 
 # INFO, not just DEBUG, so ai.parse_screenshot's raw-model-output logging
@@ -82,6 +84,14 @@ from app.rate_limit import RateLimiter
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 
 app = FastAPI(title="Mirror")
+
+
+@app.on_event("startup")
+def _log_integration_config() -> None:
+    # Redacted presence checks (never the secrets), so a missing/mis-pasted key shows up in the
+    # deploy logs. Done here rather than at import time, which precedes logging configuration.
+    books_module.log_configuration()
+    reddit_module.log_configuration()
 
 
 @app.middleware("http")

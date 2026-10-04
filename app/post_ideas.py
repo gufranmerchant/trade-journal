@@ -17,11 +17,16 @@ import re
 
 from groq import APIError
 
+from concurrent.futures import ThreadPoolExecutor
+
+from app import reddit
 from app.keyword_research import MODEL, _TRAILING_COMMA_RE, client
 
 logger = logging.getLogger(__name__)
 
 MAX_TOPIC_LENGTH = 300
+
+_reddit_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="reddit-social")
 
 # Canonical order also used to key platform_tags in the response — keeps
 # frontend rendering order stable regardless of what order the user checked
@@ -218,6 +223,11 @@ def generate_post_ideas(topic: str, platforms) -> dict:
     topic, normalized_platforms = validate_request(topic, platforms)
     labels = [PLATFORM_LABELS[p] for p in normalized_platforms]
 
+    # "Trending Right Now" is pulled by plain code while the model call runs. Reddit data is never
+    # sent to the model (Reddit Developer Terms 7.2); the writer reads it as raw inspiration.
+    reddit_future = _reddit_executor.submit(reddit.fetch_social_trending, topic, normalized_platforms) \
+        if reddit.enabled() else None
+
     try:
         resp = client.chat.completions.create(
             model=MODEL,
@@ -238,6 +248,8 @@ def generate_post_ideas(topic: str, platforms) -> dict:
         # (all subclass groq.APIError) — main.py turns this into a clean 502
         # instead of a raw 500 crashing out of the request.
         logger.warning("generate_post_ideas Groq API call failed: %s", e)
+        if reddit_future:
+            reddit_future.cancel()
         raise PostIdeasError(FRIENDLY_ERROR_MESSAGE) from e
 
     raw_content = resp.choices[0].message.content
@@ -245,4 +257,9 @@ def generate_post_ideas(topic: str, platforms) -> dict:
     # a bad or malformed response can be diagnosed from the server log.
     logger.info("generate_post_ideas raw model output: %r", raw_content)
     parsed = _strip_to_json(raw_content)
-    return _normalize(parsed, normalized_platforms)
+    result = _normalize(parsed, normalized_platforms)
+    if reddit_future:
+        trending = reddit_future.result()
+        if trending:
+            result["trending"] = trending
+    return result

@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from groq import APIError, Groq
 
-from app import books
+from app import books, reddit
 from app.config import GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
@@ -222,6 +222,10 @@ def research_keywords(topic: str) -> dict:
     # Start the book lookup now so it runs while the model call is in flight
     # (find_competitor_books never raises and has its own deadline).
     books_future = _lookup_executor.submit(books.lookup_volumes, topic)
+    # Reddit threads are fetched alongside, by plain code. Nothing from Reddit is ever put in
+    # a model request: the Groq call below carries only the user's own topic (Reddit Developer
+    # Terms 7.2 forbids sharing Reddit data with third parties).
+    reddit_future = _lookup_executor.submit(reddit.fetch_genre_corpus, topic) if reddit.enabled() else None
 
     try:
         resp = client.chat.completions.create(
@@ -239,6 +243,8 @@ def research_keywords(topic: str) -> dict:
         # (all subclass groq.APIError) — main.py turns this into a clean 502
         # instead of a raw 500 crashing out of the request.
         logger.warning("research_keywords Groq API call failed: %s", e)
+        if reddit_future:
+            reddit_future.cancel()
         books_future.cancel()  # the answer is an error anyway; don't spend a Books request on it if it hasn't started
         raise KeywordResearchError(FRIENDLY_ERROR_MESSAGE) from e
 
@@ -262,4 +268,13 @@ def research_keywords(topic: str) -> dict:
         volumes = volumes + books.lookup_volumes(topic, extra_queries=extra)
         book_entries = books.pick_competitors(topic, volumes, fiction=fiction)
     result["competitors"] = _assemble_competitors(book_entries, result["competitors"])
+
+    if reddit_future:
+        # Match the real Google Books titles (a wider candidate list than the 5 shown) against
+        # reader-community threads with plain string matching; omit the section if nothing fits.
+        candidates = [{"title": b["title"], "author": b["author"], "url": b.get("url")}
+                      for b in books.pick_competitors(topic, volumes, limit=25, fiction=fiction)]
+        block = reddit.build_keyword_block(topic, reddit_future.result(), candidates)
+        if block:
+            result["reddit"] = block
     return result

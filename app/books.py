@@ -74,7 +74,10 @@ def describe_key() -> str:
             + (", HAS LEADING/TRAILING WHITESPACE" if whitespace else ""))
 
 
-logger.info("GOOGLE_BOOKS_API_KEY: %s", describe_key())
+def log_configuration() -> None:
+    """Called from main.py's startup hook. (A module-level logger.info runs at import time, BEFORE
+    main.py configures logging, so the line would be silently dropped - which it was.)"""
+    logger.info("GOOGLE_BOOKS_API_KEY: %s", describe_key())
 
 
 def _google_error_detail(resp: "httpx.Response") -> str:

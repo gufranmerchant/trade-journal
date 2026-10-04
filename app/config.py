@@ -26,6 +26,13 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 # Optional: real competitor books for Keyword Research (app/books.py). Google Books now
 # refuses anonymous requests, so without this the section shows pattern blurbs only.
 GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY", "")
+# Optional: Reddit threads in Keyword Research / Post Idea Finder (app/reddit.py). Needs an app
+# registered at reddit.com/prefs/apps; without credentials those sections are simply omitted.
+# REDDIT_ENABLED=0 switches the integration off without removing the credentials.
+REDDIT_CLIENT_ID = os.environ.get("REDDIT_CLIENT_ID", "").strip()
+REDDIT_CLIENT_SECRET = os.environ.get("REDDIT_CLIENT_SECRET", "").strip()
+REDDIT_USERNAME = os.environ.get("REDDIT_USERNAME", "").strip()  # for the User-Agent Reddit requires
+REDDIT_ENABLED = os.environ.get("REDDIT_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _clerk_frontend_api(publishable_key: str) -> str:
