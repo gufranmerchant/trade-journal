@@ -22,6 +22,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime, timezone
 
 import httpx
 
@@ -402,6 +403,47 @@ def _category_ok(topic: str, info: dict, fiction: bool | None) -> bool:
     return True
 
 
+# Recency: "is this a book someone would be competing against on Amazon today?" Google's ratingsCount
+# says little about that (it comes from Google's own ecosystem, so most indie KDP titles show 0 however
+# well they sell), so how recent the book is carries real weight. Full weight for the last few years,
+# tapering to almost nothing around 20 years out. Old books are never excluded, only outweighed: an
+# evergreen with many ratings can still surface.
+RECENCY_WEIGHT = 4.0              # vs. relevance's 10: a modern 0.7-relevance book beats an ancient perfect match
+RECENCY_FULL_YEARS = 5            # published within this many years: full recency score
+RECENCY_FLOOR_YEARS = 20          # at this age and beyond: the floor
+RECENCY_FLOOR = 0.05
+RECENCY_UNKNOWN = 0.4             # no usable publishedDate: thin metadata is common on legitimate active listings
+_MIN_PLAUSIBLE_YEAR = 1450
+
+
+def _current_year() -> int:
+    return datetime.now(timezone.utc).year
+
+
+def _published_year(info: dict) -> int | None:
+    """The year from publishedDate ("2023", "2023-05", "2023-05-17"), or None if absent / not a plausible year."""
+    m = re.match(r"\s*(\d{4})\b", str(info.get("publishedDate") or ""))
+    if not m:
+        return None
+    year = int(m.group(1))
+    return year if _MIN_PLAUSIBLE_YEAR <= year <= _current_year() + 2 else None
+
+
+def _recency(info: dict) -> float:
+    """0..1: 1.0 for a recent (or upcoming) book, tapering linearly to RECENCY_FLOOR at RECENCY_FLOOR_YEARS
+    old; RECENCY_UNKNOWN when the year is missing or unusable."""
+    year = _published_year(info)
+    if year is None:
+        return RECENCY_UNKNOWN
+    age = _current_year() - year
+    if age <= RECENCY_FULL_YEARS:
+        return 1.0
+    if age >= RECENCY_FLOOR_YEARS:
+        return RECENCY_FLOOR
+    span = RECENCY_FLOOR_YEARS - RECENCY_FULL_YEARS
+    return 1.0 - (1.0 - RECENCY_FLOOR) * (age - RECENCY_FULL_YEARS) / span
+
+
 def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITORS,
                      fiction: bool | None = None) -> list[dict]:
     """Filter, dedupe and rank raw volumes into at most `limit` competitor entries.
@@ -425,7 +467,8 @@ def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITO
         seen.add(dedupe_key)
         info = book["info"]
         has_description = len(info.get("description") or "") >= 30
-        rank = rel * 10 + math.log1p(info.get("ratingsCount") or 0) * 0.5 + (1.0 if has_description else 0.0)
+        rank = (rel * 10 + RECENCY_WEIGHT * _recency(info)
+                + math.log1p(info.get("ratingsCount") or 0) * 0.5 + (1.0 if has_description else 0.0))
         candidates.append((rank, book))
     candidates.sort(key=lambda c: c[0], reverse=True)
 

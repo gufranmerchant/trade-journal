@@ -511,3 +511,111 @@ def test_harvest_and_suggestions_use_the_filtered_vocabulary():
     for prefix in ("lit", "soc", "bus", "phil", "pol", "self"):
         assert books.category_suggestions(prefix) == [], prefix
     assert books.category_suggestions("body") == []                       # the bucket is no longer suggested
+
+
+# ---------------------------------------------------------------- recency in the ranking
+
+DESC = "A long enough description of the book so that it counts as having one."
+
+
+@pytest.fixture
+def now2026(monkeypatch):
+    monkeypatch.setattr(books, "_current_year", lambda: 2026)
+
+
+def _info(date):
+    return {} if date is None else {"publishedDate": date}
+
+
+@pytest.mark.parametrize("date", ["2026-01-02", "2024", "2021-05", "2027", "2028-03-01"])
+def test_recent_and_upcoming_books_get_full_recency(now2026, date):
+    assert books._recency(_info(date)) == 1.0                                                  # within 5 years, or a pre-order
+
+
+def test_the_grace_period_ends_after_five_years(now2026):
+    assert books._recency(_info("2021")) == 1.0                                                # exactly 5 years old
+    assert 0.9 < books._recency(_info("2020")) < 1.0                                           # 6: starts to taper
+
+
+def test_recency_decays_monotonically_to_a_small_floor(now2026):
+    scores = [books._recency(_info(str(2026 - age))) for age in range(0, 40)]
+    assert all(a >= b for a, b in zip(scores, scores[1:]))                                    # never rises with age
+    assert scores[5] == 1.0 and 0.5 < scores[12] < 0.7 and scores[20] == books.RECENCY_FLOOR  # shape: flat, taper, floor
+    assert scores[39] == books.RECENCY_FLOOR == 0.05                                           # a 1987 book, a 1940s book: near zero
+    assert books._recency(_info("1948-01-01")) == books.RECENCY_FLOOR
+
+
+@pytest.mark.parametrize("date", [None, "", "unknown", "n.d.", "0000", "0123", "9999", "2030", "12", "c.1990"])   # 2030: implausibly far ahead
+def test_missing_or_unusable_dates_get_a_small_neutral_default_not_zero(now2026, date):
+    assert books._recency(_info(date)) == books.RECENCY_UNKNOWN
+    assert 0 < books.RECENCY_UNKNOWN < 1
+
+
+def test_unknown_sits_between_a_recent_book_and_an_ancient_one(now2026):
+    assert books._recency(_info("1948")) < books._recency(_info(None)) < books._recency(_info("2023"))
+
+
+def _rank(topic, volumes, **kw):
+    return [b["title"] for b in books.pick_competitors(topic, volumes, **kw)]
+
+
+def test_an_old_thinly_rated_book_ranks_below_a_recent_one_with_equal_relevance(now2026):
+    old = vol("The Vicarage Puzzle: A Cozy Mystery", year="1948", count=3, description=DESC, categories=("Fiction / Mystery",))
+    new = vol("The Bakery Murders: A Cozy Mystery", year="2023", count=0, description=DESC, categories=("Fiction / Mystery",))
+    assert _rank("cozy mystery", [old, new]) == ["The Bakery Murders: A Cozy Mystery", "The Vicarage Puzzle: A Cozy Mystery"]
+
+
+def test_an_old_book_with_HIGHER_relevance_still_loses_to_a_clearly_relevant_modern_one(now2026):
+    old = vol("Cozy Mystery Cozy Mystery", authors=("Old Author",), year="1948", count=3, description=DESC)          # both words in the title: rel 1.0
+    new = vol("The Cozy Bakery: A Mystery Novel", authors=("New Author",), year="2023", description=DESC)           # also both: rel 1.0
+    weaker = vol("The Mystery of the Bakery", authors=("Third Author",), year="2023", description=DESC + " cozy")  # 'cozy' only in the description: rel 0.75
+    order = _rank("cozy mystery", [old, weaker, new])
+    assert order.index("The Mystery of the Bakery") < order.index("Cozy Mystery Cozy Mystery")
+    assert order[0] == "The Cozy Bakery: A Mystery Novel"
+
+
+def test_a_perfect_old_match_still_beats_a_barely_relevant_modern_book(now2026):
+    # recency outweighs a *little* relevance, not a lot: relevance stays the main driver
+    old = vol("A Cozy Mystery", year="1948", description=DESC)                                              # rel 1.0
+    barely = vol("The Mystery of Bread", year="2024", description=DESC)                                     # 'cozy' missing: rel 0.5
+    assert _rank("cozy mystery", [barely, old]) == ["A Cozy Mystery", "The Mystery of Bread"]
+
+
+def test_old_books_are_never_excluded(now2026):
+    only = vol("A Classic Cozy Mystery", year="1925", description=DESC)
+    assert _rank("cozy mystery", [only]) == ["A Classic Cozy Mystery"]
+    assert len(_rank("cozy mystery", [vol(f"Old Cozy Mystery {i}", authors=(f"Author {i}",), year="1930", description=DESC) for i in range(8)])) == books.MAX_COMPETITORS
+
+
+def test_a_heavily_rated_evergreen_can_still_surface_above_an_unrated_modern_book(now2026):
+    # ratingsCount stays a secondary signal: not sufficient alone, but it still counts when present
+    classic = vol("The Cozy Mystery Classic", year="1930", count=20000, description=DESC)
+    modern = vol("The Cozy Mystery Debut", year="2024", count=0, description=DESC)
+    assert _rank("cozy mystery", [modern, classic])[0] == "The Cozy Mystery Classic"
+
+
+def test_with_equal_relevance_and_recency_more_ratings_still_sort_first(now2026):
+    a = vol("Cozy Mystery Alpha", authors=("A",), year="2023", count=2, description=DESC)
+    b = vol("Cozy Mystery Beta", authors=("B",), year="2023", count=900, description=DESC)
+    assert _rank("cozy mystery", [a, b]) == ["Cozy Mystery Beta", "Cozy Mystery Alpha"]
+
+
+def test_two_similarly_recent_similarly_relevant_books_are_not_reshuffled_by_the_year_alone(now2026):
+    a = vol("Cozy Mystery Alpha", authors=("A",), year="2024", count=40, description=DESC)
+    b = vol("Cozy Mystery Beta", authors=("B",), year="2022", count=30, description=DESC)
+    assert _rank("cozy mystery", [a, b]) == ["Cozy Mystery Alpha", "Cozy Mystery Beta"]                 # both inside the grace period: ratings decide
+
+
+def test_a_book_with_no_date_is_neither_buried_nor_promoted_over_a_recent_one(now2026):
+    undated = vol("Undated Cozy Mystery", authors=("U",), description=DESC)
+    del undated["volumeInfo"]["publishedDate"]
+    recent = vol("Recent Cozy Mystery", authors=("R",), year="2024", description=DESC)
+    ancient = vol("Ancient Cozy Mystery", authors=("O",), year="1940", description=DESC)
+    assert _rank("cozy mystery", [ancient, undated, recent]) == ["Recent Cozy Mystery", "Undated Cozy Mystery", "Ancient Cozy Mystery"]
+
+
+def test_relevance_threshold_and_per_author_cap_are_unchanged(now2026):
+    assert books.MIN_RELEVANCE == 0.5 and books.MAX_PER_AUTHOR == 2
+    same = [vol(f"Cozy Mystery Volume {i}", authors=("Same Author",), year="2024", description=DESC) for i in range(4)]
+    assert len(_rank("cozy mystery", same)) == 2
+    assert _rank("cozy mystery", [vol("Gardening for Beginners", year="2024", description=DESC)]) == []
