@@ -20,6 +20,7 @@ class FakeWikipedia:
         self.views = {}         # canonical title -> {"YYYYMM": views}
         self.requests = []
         self.status = None      # force this HTTP status on every request
+        self.paginate = False   # serve each page's categories in two responses, as a "continue" would
 
     def __call__(self, request: httpx.Request):
         self.requests.append(request)
@@ -37,6 +38,7 @@ class FakeWikipedia:
         if q.get("action") == "opensearch":
             return httpx.Response(200, json=[q["search"], self.search.get(q["search"].lower(), []), [], []])
         if q.get("action") == "query":
+            second = q.get("clcontinue") == "page2"
             pages, redirects = [], []
             for t in q["titles"].split("|"):
                 target = self.redirects.get(t, t)
@@ -49,8 +51,17 @@ class FakeWikipedia:
                 entry = {"title": target, "description": page["description"]}
                 if page.get("disambiguation"):
                     entry["pageprops"] = {"disambiguation": ""}
+                cats = page.get("categories", [])
+                if self.paginate:
+                    half = (len(cats) + 1) // 2
+                    cats = cats[half:] if second else cats[:half]
+                if "categories" in q["prop"]:
+                    entry["categories"] = [{"ns": 14, "title": "Category:" + c} for c in cats]
                 pages.append(entry)
-            return httpx.Response(200, json={"query": {"redirects": redirects, "pages": pages}})
+            body = {"query": {"redirects": redirects, "pages": pages}}
+            if self.paginate and not second:
+                body["continue"] = {"clcontinue": "page2", "continue": "||"}
+            return httpx.Response(200, json=body)
         return httpx.Response(500)
 
     def pageview_requests(self):
@@ -320,6 +331,85 @@ def test_the_literature_rescue_still_beats_the_music_exclusion():
     assert wikipedia.genre_shaped("Genre of music and literature")
     assert wikipedia.genre_shaped("Genre of literature, film, and television")
     assert not wikipedia.genre_shaped("Genre of popular music")
+
+
+# ---- Wikipedia's own category membership (real categories of articles that used to leak)
+
+REGGAE_FUSION = {"description": "Fusion genre of reggae", "categories": ["Fusion music genres", "Music of Jamaica", "Reggae genres"]}
+SKATE_PUNK = {"description": "Subgenre of punk rock", "categories": [
+    "1980s in music", "20th-century music genres", "21st-century music genres", "American styles of music", "Hardcore punk genres"]}
+
+
+def test_music_styles_are_excluded_by_category_even_though_their_description_never_says_music(wiki):
+    wiki.search["reg"] = ["Reggae fusion", "Skate punk", "Regency romance"]
+    wiki.pages.update({
+        "Reggae fusion": REGGAE_FUSION, "Skate punk": SKATE_PUNK,
+        "Regency romance": {"description": "Subgenre of romance fiction", "categories": ["Literary genres", "Romance novels"]},
+    })
+    assert wikipedia.suggest("reg") == ["Regency romance"]
+
+
+def test_the_category_rule_alone_is_enough_whatever_the_description_says(wiki):
+    # an otherwise perfect, book-like description: only the category can reject it
+    assert wikipedia.genre_shaped("Subgenre of fiction")
+    assert not wikipedia.genre_shaped("Subgenre of fiction", ["Fusion music genres"])
+    assert not wikipedia.genre_shaped("Subgenre of fiction", ["Folk music subgenres"])
+    assert not wikipedia.genre_shaped("Subgenre of fiction", ["21ST-CENTURY MUSIC GENRES"])        # case-insensitive
+
+
+def test_the_description_layer_still_catches_music_without_category_data(wiki):
+    # real: "Reggae" is only in "Jamaican styles of music" (no "music genres"), so its description must still reject it
+    assert not wikipedia.genre_shaped("Music genre", ["1960s in music", "Jamaican styles of music"])
+    assert not wikipedia.genre_shaped("Subculture including music, dance and graffiti", ["African-American music", "Musical subcultures"])
+
+
+def test_book_genres_with_real_categories_are_still_accepted(wiki):
+    assert wikipedia.genre_shaped("Subgenre of crime fiction", ["Literary genres", "Mystery fiction"])
+    assert wikipedia.genre_shaped("Genre of literature, film, and television", ["Literary genres", "Television genres", "Thriller genres"])
+    assert wikipedia.genre_shaped("Literary genre", ["Fantasy genres"])
+    assert wikipedia.genre_shaped("Genres of literature that explore social and political structures", ["Film genres", "Science fiction genres"])
+
+
+def test_a_music_genre_topic_gets_no_interest_section(wiki):
+    wiki.search["skate punk"] = ["Skate punk"]
+    wiki.pages["Skate punk"] = SKATE_PUNK
+    wiki.views["Skate punk"] = _steady_views()
+    assert wikipedia.interest_over_time("skate punk", today=TODAY) is None
+    assert wiki.pageview_requests() == []
+
+
+def test_categories_come_in_the_same_request_as_the_descriptions(wiki):
+    wiki.search["reg"] = ["Reggae fusion", "Regency romance"]
+    wiki.pages.update({"Reggae fusion": REGGAE_FUSION, "Regency romance": {"description": "Subgenre of romance fiction", "categories": []}})
+    wikipedia.suggest("reg")
+    assert len(wiki.requests) == 2                                   # opensearch + ONE describe query: no extra request
+    params = dict(wiki.requests[1].url.params)
+    assert "categories" in params["prop"] and "description" in params["prop"] and params["clshow"] == "!hidden" and params["cllimit"] == "max"
+
+
+def test_a_continued_category_list_is_followed_so_a_late_music_category_is_not_missed(wiki):
+    wiki.paginate = True
+    wiki.search["skate"] = ["Skate punk"]
+    # the music category sits in the second half, which only arrives with the continuation
+    wiki.pages["Skate punk"] = {"description": "Subgenre of punk rock", "categories": ["1980s in music", "American styles of music", "20th-century music genres", "Hardcore punk genres"]}
+    assert wikipedia.suggest("skate") == []
+    assert len(wiki.requests) == 3                                    # opensearch + describe + its continuation
+
+
+def test_continuation_is_bounded(wiki, monkeypatch):
+    class Endless(FakeWikipedia):
+        def __call__(self, request):
+            r = super().__call__(request)
+            if dict(request.url.params).get("action") == "query":
+                body = r.json(); body["continue"] = {"clcontinue": "page2", "continue": "||"}
+                return httpx.Response(200, json=body)
+            return r
+    endless = Endless()
+    endless.search["cozy"] = ["Cozy mystery"]
+    endless.pages["Cozy mystery"] = {"description": "Subgenre of crime fiction", "categories": ["Literary genres"]}
+    monkeypatch.setattr(wikipedia, "_client", wikipedia.make_client(httpx.MockTransport(endless)))
+    assert wikipedia.suggest("cozy") == ["Cozy mystery"]
+    assert len(endless.requests) == 1 + 1 + wikipedia.MAX_CONTINUATIONS
 
 
 def test_suggest_needs_three_characters_and_makes_no_request_for_less(wiki):

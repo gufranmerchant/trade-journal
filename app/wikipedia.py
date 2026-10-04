@@ -112,24 +112,43 @@ def _opensearch(term: str, limit: int = OPENSEARCH_LIMIT) -> list[str]:
     return [t for t in titles if isinstance(t, str)]
 
 
+MAX_CONTINUATIONS = 3     # page-category lists are capped per response; follow at most this many continuations
+
+
 def _describe(titles: list[str]) -> dict[str, dict]:
     """requested title -> {"title": canonical title after redirects, "description": short description,
-    "disambiguation": bool}, for titles that exist."""
+    "disambiguation": bool, "categories": [category names]}, for titles that exist.
+
+    One query carries all of it. Hidden (maintenance) categories are excluded, which is most of the
+    volume; if the category list is still long enough that Wikipedia continues it, the continuation
+    is followed (rarely) so a page's categories are never silently truncated."""
     if not titles:
         return {}
-    data = _get_json(API_URL, {
-        "action": "query", "titles": "|".join(titles), "prop": "description|pageprops", "ppprop": "disambiguation",
-        "redirects": 1, "format": "json", "formatversion": 2,
-    })
-    query = (data or {}).get("query") or {}
-    pages = {p.get("title"): p for p in query.get("pages") or [] if isinstance(p, dict) and not p.get("missing")}
-    redirected = {r["from"]: r["to"] for r in query.get("redirects") or [] if "from" in r and "to" in r}
+    params = {
+        "action": "query", "titles": "|".join(titles), "prop": "description|pageprops|categories", "ppprop": "disambiguation",
+        "cllimit": "max", "clshow": "!hidden", "redirects": 1, "format": "json", "formatversion": 2,
+    }
+    pages: dict[str, dict] = {}
+    redirected: dict[str, str] = {}
+    for _ in range(1 + MAX_CONTINUATIONS):
+        data = _get_json(API_URL, params) or {}
+        query = data.get("query") or {}
+        for p in query.get("pages") or []:
+            if not isinstance(p, dict) or p.get("missing"):
+                continue
+            merged = pages.setdefault(p.get("title"), {**p, "categories": []})
+            merged["categories"] = merged["categories"] + [c.get("title", "") for c in p.get("categories") or [] if isinstance(c, dict)]
+        redirected.update({r["from"]: r["to"] for r in query.get("redirects") or [] if "from" in r and "to" in r})
+        if not data.get("continue"):
+            break
+        params = {**params, **data["continue"]}
     out = {}
     for requested in titles:
         page = pages.get(redirected.get(requested, requested))
         if page:
             out[requested] = {"title": page["title"], "description": page.get("description") or "",
-                              "disambiguation": "disambiguation" in (page.get("pageprops") or {})}
+                              "disambiguation": "disambiguation" in (page.get("pageprops") or {}),
+                              "categories": [re.sub(r"^Category:", "", c) for c in page["categories"]]}
     return out
 
 
@@ -154,7 +173,19 @@ _OTHER_MEDIA_RE = re.compile(
 _SPECIFIC_WORK_RE = re.compile(r"\b(1[0-9]{3}|20[0-9]{2})\b|\bby\s+[A-Z]")
 
 
-def genre_shaped(description: str) -> bool:
+# Wikipedia's own tagging of music-style articles ("Fusion music genres", "20th-century music genres",
+# "Hardcore punk" under "... music subgenres"), independent of how the one-line description is phrased.
+# Additive to the description checks below, which still catch the rest ("Genre of popular music", "Film genre").
+_MUSIC_CATEGORY_MARKERS = ("music genres", "music subgenres")
+
+
+def _is_music_category(categories) -> bool:
+    return any(m in str(c).lower() for c in categories or () for m in _MUSIC_CATEGORY_MARKERS)
+
+
+def genre_shaped(description: str, categories=()) -> bool:
+    if _is_music_category(categories):
+        return False
     if not description or _SPECIFIC_WORK_RE.search(description):
         return False
     if not (_CATEGORY_WORD_RE.search(description) or _BOOK_TYPE_RE.search(description)):
@@ -218,7 +249,7 @@ def find_genre_article(topic: str) -> dict | None:
     described = _describe(candidates)
     for requested in candidates:
         info = described.get(requested)
-        if info and not info["disambiguation"] and genre_shaped(info["description"]):
+        if info and not info["disambiguation"] and genre_shaped(info["description"], info["categories"]):
             # `redirected_from` is set when Wikipedia itself redirects the matched title to another
             # article (e.g. "Epic fantasy" -> "High fantasy"), so the UI can say which page is measured.
             same = _key(_words(requested)) == _key(_words(info["title"]))
@@ -311,7 +342,7 @@ def suggest(prefix: str, limit: int = MAX_SUGGESTIONS) -> list[str]:
             out, seen = [], set()
             for requested, info in sorted(_describe(titles).items(), key=lambda kv: titles.index(kv[0])):
                 text = _display(requested)      # the title that matched the typed text (a redirect's own name), not its target
-                if (info["disambiguation"] or not _qualifier_ok(requested) or not genre_shaped(info["description"])
+                if (info["disambiguation"] or not _qualifier_ok(requested) or not genre_shaped(info["description"], info["categories"])
                         or text.lower() in seen):
                     continue
                 seen.add(text.lower())
