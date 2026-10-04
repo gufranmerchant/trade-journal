@@ -530,3 +530,48 @@ def test_the_shipped_default_is_off_and_credentials_alone_do_not_enable_reddit(m
     # ...and the template tells people the same
     template = (Path(reddit.__file__).parent.parent / ".env.example").read_text(encoding="utf-8")
     assert re.search(r"^REDDIT_ENABLED=0\s*$", template, re.M)
+
+
+# ------------------------------------------------------------------ nothing Reddit-related lives in the page HTML
+
+STATIC = Path(reddit.__file__).parent / "static"
+
+
+@pytest.mark.parametrize("page", ["keyword-research.html", "post-ideas.html"])
+def test_tool_page_files_contain_no_reddit_markup_or_code(page):
+    # The Reddit sections are built at runtime, only when a response carries Reddit data
+    # (nav.js lazy-loads reddit-sections.js). The page files must stay exactly as they were
+    # before the integration: no hidden containers, no render code.
+    assert "reddit" not in (STATIC / page).read_text(encoding="utf-8").lower()
+
+
+@pytest.mark.parametrize("path", ["/marketer/books/keyword-research", "/marketer/social/post-ideas"])
+def test_served_pages_have_no_reddit_trace_whether_the_flag_is_off_or_on(fake, monkeypatch, path):
+    from fastapi.testclient import TestClient
+    from app import main
+    client = TestClient(main.app)
+    monkeypatch.setattr(reddit.config, "REDDIT_ENABLED", False)
+    off = client.get(path).text
+    fake()                                              # credentials set ...
+    monkeypatch.setattr(reddit.config, "REDDIT_ENABLED", True)
+    on = client.get(path).text                          # ... and the flag on
+    assert "reddit" not in off.lower() and "reddit" not in on.lower()
+    import re as _re
+    norm = lambda h: _re.sub(r"\?v=\d+", "?v=X", h)
+    assert norm(off) == norm(on)                        # the flag never changes the served HTML
+
+
+def test_reddit_sections_script_builds_the_dom_without_innerhtml_and_only_links_reddit():
+    js = (STATIC / "js" / "reddit-sections.js").read_text(encoding="utf-8")
+    code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)           # ignore the explanatory comments
+    assert not re.search(r"\.innerHTML|insertAdjacentHTML|document\.write|outerHTML", code)
+    assert 'https://www.reddit.com/' in js                       # the URL allow-list for thread links
+    assert "textContent" in js
+
+
+def test_nav_hook_loads_the_reddit_script_only_on_demand_for_the_two_tool_endpoints():
+    nav = (STATIC / "js" / "nav.js").read_text(encoding="utf-8")
+    assert '"/tools/keyword-research"' in nav and '"/tools/post-ideas"' in nav
+    assert "/static/js/reddit-sections.js" in nav
+    # the script tag is created inside loadRedditSections, never at page load
+    assert nav.count('script.src = "/static/js/reddit-sections.js"') == 1 and 'createElement("script")' in nav

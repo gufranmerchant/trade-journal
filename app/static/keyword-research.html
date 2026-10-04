@@ -77,18 +77,6 @@
           <div class="section-label">Suggested categories</div>
           <div class="chip-static-list" id="categoryList"></div>
         </div>
-
-        <div class="card platform-tag-card hidden" id="redditTrendingCard">
-          <div class="section-label">Trending in this genre</div>
-          <p class="section-hint" id="redditTrendingHint"></p>
-          <div class="idea-list" id="redditTrendingList"></div>
-        </div>
-
-        <div class="card platform-tag-card hidden" id="redditRecommendedCard">
-          <div class="section-label">Recommended Reading</div>
-          <p class="section-hint">Books from the competitor research above that readers are discussing right now &mdash; a mention isn&rsquo;t an endorsement. Craft inspiration, not market data. Source: Reddit.</p>
-          <div class="idea-list" id="redditRecommendedList"></div>
-        </div>
       </div>
     </main>
   </div>
@@ -146,68 +134,6 @@
         return parts.join("") || `<p class="section-hint">None suggested.</p>`;
       }
 
-      const REDDIT_URL_PREFIX = "https://www.reddit.com/";
-      const safeRedditUrl = (u) => (typeof u === "string" && u.startsWith(REDDIT_URL_PREFIX) ? u : null);
-      function redditAge(createdUtc) {
-        const hours = Math.max(0, (Date.now() / 1000 - createdUtc) / 3600);
-        if (hours < 1) return "just now";
-        if (hours < 48) return `${Math.round(hours)}h ago`;
-        return `${Math.round(hours / 24)}d ago`;
-      }
-      const threadMeta = (t) =>
-        `r/${escapeHtml(t.subreddit)} · ${Number(t.comments) || 0} comment${t.comments === 1 ? "" : "s"} · ${redditAge(t.created_utc)}`;
-      function threadLink(t) {
-        const url = safeRedditUrl(t.url);
-        return url
-          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(t.title)}</a>`
-          : escapeHtml(t.title);
-      }
-      const threadCards = (threads) => threads.map((t) => `
-          <div class="card idea-card">
-            <div class="idea-card-body">
-              <div class="idea-card-title">${threadLink(t)}</div>
-              <div class="idea-card-rationale">${threadMeta(t)}</div>
-            </div>
-          </div>`).join("");
-
-      // Both Reddit sections are omitted unless the server found something real for them.
-      function renderReddit(reddit) {
-        el("redditTrendingCard").classList.add("hidden");
-        el("redditRecommendedCard").classList.add("hidden");
-        if (!reddit) return;
-
-        if ((reddit.trending || []).length) {
-          const subs = (reddit.subreddits || []).map((s) => `r/${escapeHtml(s)}`).join(", ");
-          el("redditTrendingHint").innerHTML =
-            `Live threads from ${subs}, titles as posted &mdash; follow a link to read the discussion. Source: Reddit.`;
-          el("redditTrendingList").innerHTML = threadCards(reddit.trending);
-          el("redditTrendingCard").classList.remove("hidden");
-        }
-
-        if ((reddit.recommended || []).length) {
-          el("redditRecommendedList").innerHTML = reddit.recommended.map((b, i) => {
-            const bookUrl = typeof b.book_url === "string" && b.book_url.startsWith("https://") ? b.book_url : null;
-            const title = bookUrl
-              ? `<a href="${escapeHtml(bookUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(b.title)}</a>`
-              : escapeHtml(b.title);
-            const where = (b.subreddits || []).map((s) => `r/${escapeHtml(s)}`).join(", ");
-            const links = (b.threads || []).map((t) =>
-              `<div class="idea-card-rationale">${threadLink(t)} <span>(${threadMeta(t)})</span></div>`).join("");
-            return `
-          <div class="card idea-card">
-            <div class="idea-card-number">${i + 1}</div>
-            <div class="idea-card-body">
-              <div class="idea-card-title">${title}</div>
-              <div class="idea-card-rationale">by ${escapeHtml(b.author)}</div>
-              <div class="idea-card-rationale">Readers in ${where} are discussing this &middot; ${Number(b.mentions) || 0} thread${b.mentions === 1 ? "" : "s"}</div>
-              ${links}
-            </div>
-          </div>`;
-          }).join("");
-          el("redditRecommendedCard").classList.remove("hidden");
-        }
-      }
-
       function renderResults(data) {
         el("keywordList").innerHTML = (data.keywords || []).map((k, i) => `
           <div class="card idea-card">
@@ -224,7 +150,6 @@
         el("competitorList").innerHTML = renderCompetitors(data.competitors || [], chips);
         el("categoryList").innerHTML = chips(data.categories || []);
 
-        renderReddit(data.reddit);
         el("resultsWrap").classList.remove("hidden");
       }
 

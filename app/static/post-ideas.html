@@ -79,12 +79,6 @@
         </div>
 
         <div class="platform-results-list" id="platformResults"></div>
-
-        <div class="card platform-tag-card hidden" id="redditTrendingCard">
-          <div class="section-label">Trending Right Now</div>
-          <p class="section-hint" id="redditTrendingHint"></p>
-          <div class="idea-list" id="redditTrendingList"></div>
-        </div>
       </div>
     </main>
   </div>
@@ -134,43 +128,6 @@
         `).join("") || `<p class="section-hint">None suggested.</p>`;
       }
 
-      const REDDIT_URL_PREFIX = "https://www.reddit.com/";
-      const safeRedditUrl = (u) => (typeof u === "string" && u.startsWith(REDDIT_URL_PREFIX) ? u : null);
-      function redditAge(createdUtc) {
-        const hours = Math.max(0, (Date.now() / 1000 - createdUtc) / 3600);
-        if (hours < 1) return "just now";
-        if (hours < 48) return `${Math.round(hours)}h ago`;
-        return `${Math.round(hours / 24)}d ago`;
-      }
-      const threadMeta = (t) =>
-        `r/${escapeHtml(t.subreddit)} · ${Number(t.comments) || 0} comment${t.comments === 1 ? "" : "s"} · ${redditAge(t.created_utc)}`;
-      function threadLink(t) {
-        const url = safeRedditUrl(t.url);
-        return url
-          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(t.title)}</a>`
-          : escapeHtml(t.title);
-      }
-      const threadCards = (threads) => threads.map((t) => `
-          <div class="card idea-card">
-            <div class="idea-card-body">
-              <div class="idea-card-title">${threadLink(t)}</div>
-              <div class="idea-card-rationale">${threadMeta(t)}</div>
-            </div>
-          </div>`).join("");
-
-      // Omitted unless the server returned real threads. Deliberately NOT filtered to the post's
-      // topic: it's current activity in the communities the audience hangs out in.
-      function renderTrending(trending) {
-        el("redditTrendingCard").classList.add("hidden");
-        if (!trending || !(trending.threads || []).length) return;
-        const subs = (trending.subreddits || []).map((s) => `r/${escapeHtml(s)}`).join(", ");
-        el("redditTrendingHint").innerHTML =
-          `What&rsquo;s being discussed right now in ${subs} &mdash; not filtered to your topic. ` +
-          `A possible angle to connect to your post, not a replacement for the ideas above. Titles as posted. Source: Reddit.`;
-        el("redditTrendingList").innerHTML = threadCards(trending.threads);
-        el("redditTrendingCard").classList.remove("hidden");
-      }
-
       function renderResults(data) {
         el("ideaList").innerHTML = (data.ideas || []).map((idea, i) => `
           <div class="card idea-card">
@@ -190,7 +147,6 @@
           </div>
         `).join("");
 
-        renderTrending(data.trending);
         el("resultsWrap").classList.remove("hidden");
       }
 

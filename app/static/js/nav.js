@@ -221,5 +221,56 @@
     updateThemeToggleUI(activeTheme());
   }
 
+  // ---------------------------------------------------------------------
+  // Reddit sections. The tool pages' own HTML knows nothing about Reddit: when a response
+  // from the two tool endpoints carries Reddit data, this loads reddit-sections.js on demand
+  // and it builds the sections in the DOM at that moment. Otherwise nothing is loaded and
+  // nothing is created, so with Reddit off (or nothing to show) the page is exactly as it
+  // was before the integration existed. Any previous search's sections are always removed.
+  // ---------------------------------------------------------------------
+  const REDDIT_TOOL_PATHS = ["/tools/keyword-research", "/tools/post-ideas"];
+  const REDDIT_SECTION_ATTR = "data-reddit-section";
+  const redditScriptVersion = (() => {
+    const src = document.currentScript && document.currentScript.src;  // same ?v= cache-bust as this file
+    const m = src && src.match(/\?v=\d+/);
+    return m ? m[0] : "";
+  })();
+  let redditScriptPromise = null;
+
+  function loadRedditSections() {
+    if (window.MirrorReddit) return Promise.resolve(window.MirrorReddit);
+    if (!redditScriptPromise) {
+      redditScriptPromise = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "/static/js/reddit-sections.js" + redditScriptVersion;
+        script.onload = () => resolve(window.MirrorReddit);
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    return redditScriptPromise;
+  }
+
+  function onToolResponse(data) {
+    const wrap = document.getElementById("resultsWrap");
+    if (!wrap || !data) return;
+    wrap.querySelectorAll("[" + REDDIT_SECTION_ATTR + "]").forEach((n) => n.remove());
+    const kind = data.reddit ? "keyword" : data.trending ? "social" : null;
+    if (kind) loadRedditSections().then((m) => m.render(kind, data)).catch(() => {});
+  }
+
+  if (typeof window.fetch === "function" && !window.__mirrorFetchHooked) {
+    window.__mirrorFetchHooked = true;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      const promise = originalFetch(input, init);
+      const url = typeof input === "string" ? input : (input && input.url) || "";
+      if (REDDIT_TOOL_PATHS.some((path) => url.indexOf(path) !== -1)) {
+        promise.then((res) => (res.ok ? res.clone().json() : null)).then(onToolResponse).catch(() => {});
+      }
+      return promise;  // the page gets the untouched response
+    };
+  }
+
   window.MirrorNav = { markLastUsed, getLastUsed, mountSwitcher, mountShell, setInstrumentDesign };
 })();
