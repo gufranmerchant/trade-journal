@@ -64,7 +64,7 @@
     section.setAttribute(SECTION_ATTR, "1");
     section.appendChild(el("div", "section-label", "On Bluesky this week"));
     section.appendChild(el("p", "section-hint",
-      `Popular recent posts mentioning “${b.query}”, exactly as posted — a glimpse of what readers and authors are saying, ` +
+      `Popular recent posts mentioning “${b.query}”, exactly as posted — a glimpse of what people are saying, ` +
       "not market data or an endorsement, and many are promotional. Source: Bluesky."));
     const list = el("div", "idea-list");
     b.posts.forEach((p) => list.appendChild(postCard(p)));

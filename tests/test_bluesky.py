@@ -317,3 +317,120 @@ def test_section_script_pluralises_replies_correctly():
     # a regression: a naive "+s" rendered "13 replys"
     js = (ROOT / "app" / "static" / "js" / "bluesky-section.js").read_text(encoding="utf-8")
     assert '"reply", "replies"' in js and '"like", "likes"' in js and "plural(" not in js
+
+
+# ------------------------------------------------------------------ Post Idea Finder (same module, same response key)
+
+from app import post_ideas  # noqa: E402
+
+_PI_RAW = ('{"ideas": [{"idea": "an idea", "rationale": "why"}], '
+           '"platform_tags": {"instagram": [{"tag": "#booksky", "reason": "r"}]}}')
+
+
+def _pi_groq():
+    return patch.object(post_ideas.client.chat.completions, "create",
+                        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content=_PI_RAW))]))
+
+
+def test_post_ideas_gains_a_bluesky_block_with_the_same_shape_as_keyword_research(fake):
+    fake([post(1, text=f"{TEXT_MARKER} book launch week", likes=9)])
+    with _pi_groq():
+        result = post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    assert result["bluesky"]["query"] == "book launch week"
+    assert set(result["bluesky"]["posts"][0]) == {"text", "handle", "likes", "replies", "created_at", "url"}
+    assert set(result) >= {"ideas", "platform_tags", "bluesky"}
+
+
+def test_post_ideas_has_no_bluesky_key_when_nothing_matches(fake):
+    fake([post(1, text="unrelated post")])
+    with _pi_groq():
+        assert "bluesky" not in post_ideas.generate_post_ideas("book launch week", ["instagram"])
+
+
+def test_post_ideas_with_bluesky_off_is_unchanged_and_makes_no_request(fake):
+    f = fake([post(1, text="book launch week")], enable=False)
+    with _pi_groq():
+        result = post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    assert sorted(result) == ["ideas", "platform_tags"] and f.requests == []
+
+
+def test_post_ideas_opt_out_labels_and_replies_are_filtered_the_same_way(fake):
+    fake([post(1, text="book launch week", author_labels=[{"val": "!no-unauthenticated"}]),
+          post(2, text="book launch week", reply=True), post(3, text="book launch week", labels=[{"val": "spam"}]),
+          post(4, text="book launch week party")])
+    with _pi_groq():
+        posts = post_ideas.generate_post_ideas("book launch week", ["instagram"])["bluesky"]["posts"]
+    assert [p["handle"] for p in posts] == ["author4.bsky.social"]
+
+
+def test_a_bluesky_failure_never_breaks_post_ideas(fake, monkeypatch):
+    fake()
+    def boom(topic):
+        raise RuntimeError("bluesky exploded")
+    monkeypatch.setattr(bluesky, "fetch_genre_posts", boom)
+    with _pi_groq():
+        result = post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    assert "bluesky" not in result and result["ideas"]
+
+
+def test_a_slow_bluesky_lookup_is_abandoned_not_waited_for(fake, monkeypatch):
+    import time
+    fake()
+    monkeypatch.setattr(post_ideas, "BLUESKY_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(bluesky, "fetch_genre_posts", lambda topic: time.sleep(1) or {"query": "x", "posts": [{}]})
+    with _pi_groq():
+        started = time.time()
+        result = post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    assert time.time() - started < 0.8 and "bluesky" not in result
+
+
+def test_bluesky_text_never_reaches_the_model_in_post_ideas(fake):
+    fake([post(1, text=f"{TEXT_MARKER} book launch week", handle=f"{HANDLE_MARKER}.bsky.social")])
+    with _pi_groq() as create:
+        post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    sent = repr(create.call_args)
+    assert TEXT_MARKER not in sent and HANDLE_MARKER not in sent
+
+
+def test_bluesky_content_is_never_logged_by_post_ideas(fake, caplog):
+    fake([post(1, text=f"{TEXT_MARKER} book launch week", handle=f"{HANDLE_MARKER}.bsky.social")])
+    with caplog.at_level(logging.DEBUG), _pi_groq():
+        post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    assert TEXT_MARKER not in caplog.text and HANDLE_MARKER not in caplog.text
+
+
+def test_post_ideas_bluesky_requests_are_counted_and_cached_with_keyword_research(fake):
+    f = fake([post(1, text="book launch week")])
+    with _pi_groq():
+        post_ideas.generate_post_ideas("book launch week", ["instagram"])
+        post_ideas.generate_post_ideas("Book Launch Week", ["linkedin"])               # same query: served from the shared cache
+    assert len(f.requests) == 1
+    assert next(r for r in api_usage.status()["apis"] if r["api"] == "bluesky")["used"] == 1
+
+
+def test_a_groq_failure_in_post_ideas_still_raises_the_friendly_error(fake):
+    from groq import APIConnectionError
+    fake([post(1, text="book launch week")])
+    with patch.object(post_ideas.client.chat.completions, "create",
+                      side_effect=APIConnectionError(request=httpx.Request("POST", "https://api.groq.com/x"))):
+        with pytest.raises(post_ideas.PostIdeasError):
+            post_ideas.generate_post_ideas("book launch week", ["instagram"])
+
+
+def test_the_shared_section_wording_suits_both_tools():
+    js = (ROOT / "app" / "static" / "js" / "bluesky-section.js").read_text(encoding="utf-8")
+    assert "what people are saying" in js and "readers and authors" not in js
+
+
+def test_post_ideas_module_still_has_no_path_from_bluesky_to_storage():
+    source = Path(post_ideas.__file__).read_text(encoding="utf-8")
+    assert not re.search(r"\bopen\(|write_text|write_bytes|\.commit\(|sqlalchemy|app\.db|app\.models", source)
+
+
+def test_with_the_flag_off_post_ideas_does_not_even_schedule_a_bluesky_lookup(fake, monkeypatch):
+    fake(enable=False)
+    calls = []                                       # recorded, not raised: the tool tolerates errors inside the lookup thread
+    monkeypatch.setattr(bluesky, "fetch_genre_posts", lambda topic: calls.append(topic))
+    with _pi_groq():
+        assert "bluesky" not in post_ideas.generate_post_ideas("book launch week", ["instagram"])
+    assert calls == []                               # BLUESKY_ENABLED off: the lookup is never even scheduled

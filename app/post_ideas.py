@@ -19,7 +19,7 @@ from groq import APIError
 
 from concurrent.futures import ThreadPoolExecutor
 
-from app import reddit
+from app import bluesky, reddit
 from app.keyword_research import MODEL, _TRAILING_COMMA_RE, client
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 MAX_TOPIC_LENGTH = 300
 
 _reddit_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="reddit-social")
+_bluesky_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bluesky-social")
+BLUESKY_WAIT_SECONDS = 4.0   # started with the model call, so it has almost always finished already
 
 # Canonical order also used to key platform_tags in the response — keeps
 # frontend rendering order stable regardless of what order the user checked
@@ -227,6 +229,9 @@ def generate_post_ideas(topic: str, platforms) -> dict:
     # sent to the model (Reddit Developer Terms 7.2); the writer reads it as raw inspiration.
     reddit_future = _reddit_executor.submit(reddit.fetch_social_trending, topic, normalized_platforms) \
         if reddit.enabled() else None
+    # Real recent Bluesky posts for the topic, displayed as posted - the same shared module and response key as
+    # Keyword Research. Display-only: never sent to the model, never stored.
+    bluesky_future = _bluesky_executor.submit(bluesky.fetch_genre_posts, topic) if bluesky.enabled() else None
 
     try:
         resp = client.chat.completions.create(
@@ -250,6 +255,8 @@ def generate_post_ideas(topic: str, platforms) -> dict:
         logger.warning("generate_post_ideas Groq API call failed: %s", e)
         if reddit_future:
             reddit_future.cancel()
+        if bluesky_future:
+            bluesky_future.cancel()
         raise PostIdeasError(FRIENDLY_ERROR_MESSAGE) from e
 
     raw_content = resp.choices[0].message.content
@@ -262,4 +269,12 @@ def generate_post_ideas(topic: str, platforms) -> dict:
         trending = reddit_future.result()
         if trending:
             result["trending"] = trending
+    if bluesky_future:
+        try:
+            posts = bluesky_future.result(timeout=BLUESKY_WAIT_SECONDS)
+        except Exception:  # timeout or an unexpected error: the section is optional
+            bluesky_future.cancel()
+            posts = None
+        if posts:
+            result["bluesky"] = posts
     return result
