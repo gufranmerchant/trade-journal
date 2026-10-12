@@ -343,10 +343,30 @@ def _book_from_volume(volume: dict) -> dict | None:
     return {"volume_id": volume.get("id"), "title": title, "authors": authors, "info": info}
 
 
+# Publisher blurbs often open with a pasted reader review ("★★★★★ 'I love this new series!'"). That is
+# marketing copy, not a description of the book, so leading star ratings / quoted praise are cut off.
+_LEADING_STARS_RE = re.compile(r"^[\s★☆⭐*]*(?:[★☆⭐]{1,5}|\b[1-5](?:\.\d)?\s*(?:out of 5\s*)?stars?\b)[\s:–—-]*", re.IGNORECASE)
+_LEADING_QUOTE_RE = re.compile(r"^\s*[\"“‘'][^\"”’']{3,160}[\"”’']\s*(?:[–—-]\s*[^.!?]{0,60})?[.!?]?\s*")
+
+
+def _strip_review_lead(text: str) -> str:
+    """Drops a leading star rating and/or quoted review line; returns the original text if
+    that would leave too little to describe the book."""
+    cleaned = text
+    for _ in range(3):
+        before = cleaned
+        cleaned = _LEADING_STARS_RE.sub("", cleaned, count=1)
+        cleaned = _LEADING_QUOTE_RE.sub("", cleaned, count=1)
+        if cleaned == before:
+            break
+    cleaned = cleaned.strip()
+    return cleaned if len(cleaned) >= 30 else text
+
+
 def _description_for(info: dict) -> str:
     """The API's own description when it has one; otherwise a line built only
     from its metadata fields (category, year, length) — never model text."""
-    raw = _strip_html(info.get("description") or "")
+    raw = _strip_review_lead(_strip_html(info.get("description") or ""))
     if len(raw) >= 30:
         return _truncate(raw, DESCRIPTION_MAX_CHARS)
     subtitle = (info.get("subtitle") or "").strip()
@@ -448,6 +468,8 @@ RECENCY_WEIGHT = 4.0              # vs. relevance's 10: a modern 0.7-relevance b
 RECENCY_FULL_YEARS = 5            # published within this many years: full recency score
 RECENCY_FLOOR_YEARS = 20          # at this age and beyond: the floor
 RECENCY_FLOOR = 0.05
+MAX_COMPETITOR_AGE_YEARS = 20     # older titles only backfill when fewer than MIN_MODERN modern books qualify
+MIN_MODERN = 3
 RECENCY_UNKNOWN = 0.4             # no usable publishedDate: thin metadata is common on legitimate active listings
 _MIN_PLAUSIBLE_YEAR = 1450
 
@@ -511,6 +533,16 @@ def pick_competitors(topic: str, volumes: list[dict], limit: int = MAX_COMPETITO
         logger.info("book rank: topic=%r rank=%.2f rel=%.2f recency=%.2f ratings=%s year=%s title=%r",
                     topic, rank, rel, _recency(info), info.get("ratingsCount") or 0, _published_year(info) or "?", book["title"])
     candidates.sort(key=lambda c: c[0], reverse=True)
+
+    def _is_dated(book: dict) -> bool:
+        year = _published_year(book["info"])
+        return year is not None and _current_year() - year > MAX_COMPETITOR_AGE_YEARS
+
+    # A 1987 mystery is not a benchmark for someone publishing today: keep older titles out unless
+    # there are too few modern ones to show.
+    modern = [c for c in candidates if not _is_dated(c[1])]
+    if len(modern) >= MIN_MODERN:
+        candidates = modern
 
     results = []
     per_author: dict[str, int] = {}

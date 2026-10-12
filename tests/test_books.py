@@ -683,3 +683,33 @@ def test_thriller_topic_keeps_thrillers_and_rejects_cozies():
 def test_other_genre_topics_are_unaffected_by_the_clash_rule():
     volumes = [vol("Dragon Court", ["F. Writer"], "An epic fantasy with dragons.", ["Fiction / Fantasy / Epic"])]
     assert len(books.pick_competitors("epic fantasy novels", volumes)) == 1
+
+
+def test_review_quote_lead_is_stripped_from_description():
+    info = {"description": "★★★★★ \"I love this new series!\" A retired teacher in a seaside village solves crimes."}
+    out = books._description_for(info)
+    assert out.startswith("A retired teacher")
+    assert "★" not in out
+
+
+def test_plain_description_is_untouched():
+    info = {"description": "A baker in a small town investigates murders tied to her family recipe."}
+    assert books._description_for(info).startswith("A baker in a small town")
+
+
+def _vol(i, year, title=None):
+    return {"id": str(i), "volumeInfo": {"title": title or f"Cozy Mystery Book {i}", "authors": [f"Author {i}"],
+            "publishedDate": str(year), "categories": ["Fiction / Mystery & Detective / Cozy"],
+            "description": "A cozy mystery novel about a small town sleuth solving a murder."}}
+
+
+def test_dated_books_dropped_when_enough_modern_ones():
+    vols = [_vol(1, 2024), _vol(2, 2023), _vol(3, 2022), _vol(4, 1987)]
+    titles = [b["title"] for b in books.pick_competitors("cozy mystery novels", vols, fiction=True)]
+    assert "Cozy Mystery Book 4" not in titles and len(titles) == 3
+
+
+def test_dated_books_backfill_when_too_few_modern():
+    vols = [_vol(1, 2024), _vol(4, 1987)]
+    titles = [b["title"] for b in books.pick_competitors("cozy mystery novels", vols, fiction=True)]
+    assert "Cozy Mystery Book 4" in titles
