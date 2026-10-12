@@ -56,44 +56,78 @@ client = Groq(api_key=GROQ_API_KEY)
 VISION_MODEL = "qwen/qwen3.8-27b"  # multimodal, used for all three passes
 
 
-# Groq's free tier caps this model at ~7,000 INPUT tokens per minute, and a
-# full-size screenshot costs ~2,500 tokens, so three raw screenshots in one
-# request (let alone the 2-3 calls one trade makes) blow through it (413).
-# Image tokens scale with pixel area, so downscale before sending: 1024px on
-# the long edge keeps TradingView price labels legible at roughly a quarter
-# of the cost, and re-encoding as JPEG also fixes the old hardcoded
-# "image/jpeg" label being wrong for PNG uploads.
-MAX_IMAGE_EDGE = 1024
+# Groq bills EVERY image at a flat 2,048 input tokens for this model, whatever
+# its size (verified in Groq's vision docs and from the 413s: three
+# screenshots = 6,144 tokens, over the free tier's 7,000/min cap before a
+# word of prompt, and each trade makes 2-3 calls). Downscaling a screenshot
+# therefore saves nothing — but STITCHING several into one image costs one
+# image's worth. So all of a trade's screenshots are stacked top-to-bottom
+# into a single JPEG (see _image_blocks); the prompts are told so. Width is
+# capped at COMPOSITE_WIDTH and the whole canvas at COMPOSITE_MAX_PIXELS
+# (~the model's own internal budget for one image), so nothing is upscaled
+# and text stays as legible as the model would see it anyway.
+COMPOSITE_WIDTH = 1000
+COMPOSITE_MAX_PIXELS = 1_600_000
+_COMPOSITE_GAP = 8
 
 
-def _prepare_image(img: bytes) -> bytes:
-    """Downscale + JPEG-encode one screenshot. Falls back to the original
-    bytes if it can't be decoded, so a odd file never makes things worse."""
+def _to_rgb(img: bytes) -> "Image.Image | None":
+    """Decode one screenshot to an RGB image (alpha flattened onto white).
+    None if it can't be decoded."""
     try:
-        with Image.open(io.BytesIO(img)) as im:
-            im.load()
-            if im.mode in ("RGBA", "LA", "P"):
-                im = im.convert("RGBA")
-                bg = Image.new("RGB", im.size, (255, 255, 255))
-                bg.paste(im, mask=im.split()[-1])
-                im = bg
-            else:
-                im = im.convert("RGB")
-            im.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE), Image.LANCZOS)
-            out = io.BytesIO()
-            im.save(out, format="JPEG", quality=85, optimize=True)
-            return out.getvalue()
+        im = Image.open(io.BytesIO(img))
+        im.load()
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            bg.paste(im, mask=im.split()[-1])
+            return bg
+        return im.convert("RGB")
     except Exception:
-        logger.warning("could not downscale screenshot; sending original", exc_info=True)
-        return img
+        logger.warning("could not decode screenshot", exc_info=True)
+        return None
+
+
+def _jpeg_data_url(im: "Image.Image") -> str:
+    out = io.BytesIO()
+    im.save(out, format="JPEG", quality=85, optimize=True)
+    return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode()
 
 
 def _image_blocks(images: list[bytes]) -> list[dict]:
-    return [
-        {"type": "image_url",
-         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(_prepare_image(img)).decode()}"}}
-        for img in images
-    ]
+    """ONE image block for the whole trade: the screenshots stacked
+    top-to-bottom (thin grey bars between them), each scaled to a common
+    width without upscaling. One screenshot just gets re-encoded. If any file
+    can't be decoded, fall back to sending the originals untouched."""
+    decoded = [_to_rgb(b) for b in images]
+    if not decoded or any(d is None for d in decoded):
+        return [
+            {"type": "image_url",
+             "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(b).decode()}"}}
+            for b in images
+        ]
+    width = min(COMPOSITE_WIDTH, max(d.width for d in decoded))
+    tiles = []
+    for d in decoded:
+        w = min(width, d.width)
+        tiles.append(d.resize((w, max(1, round(d.height * w / d.width))), Image.LANCZOS))
+    height = sum(t.height for t in tiles) + _COMPOSITE_GAP * (len(tiles) - 1)
+    canvas = Image.new("RGB", (width, height), (128, 128, 128))
+    y = 0
+    for t in tiles:
+        canvas.paste(t, ((width - t.width) // 2, y))
+        y += t.height + _COMPOSITE_GAP
+    if canvas.width * canvas.height > COMPOSITE_MAX_PIXELS:
+        f = (COMPOSITE_MAX_PIXELS / (canvas.width * canvas.height)) ** 0.5
+        canvas = canvas.resize((max(1, int(canvas.width * f)), max(1, int(canvas.height * f))), Image.LANCZOS)
+    return [{"type": "image_url", "image_url": {"url": _jpeg_data_url(canvas)}}]
+
+
+def _images_note(n: int) -> str:
+    if n == 1:
+        return "1 screenshot of this trade follows."
+    return (f"{n} screenshots of this same trade follow, stacked top-to-bottom "
+            f"into ONE image (separated by thin grey bars).")
 
 
 def _create(**kwargs):
@@ -108,9 +142,9 @@ def _create(**kwargs):
         except groq.RateLimitError as e:
             if attempt == 2:
                 raise
-            wait = 8
+            wait = 10
             try:
-                wait = min(20, max(2, float(e.response.headers.get("retry-after", 8)) + 1))
+                wait = min(30, max(2, float(e.response.headers.get("retry-after", 8)) + 1))
             except Exception:
                 pass
             logger.warning("Groq rate limit (429); waiting %.0fs then retrying (attempt %d)", wait, attempt + 1)
@@ -224,7 +258,7 @@ def parse_screenshot(images: list[bytes], context_note: str) -> dict:
             {"role": "user", "content": [
                 {"type": "text",
                  "text": f"Trader's note about this trade: {context_note!r}. "
-                         f"{len(images)} image(s) of this same trade follow. "
+                         f"{_images_note(len(images))} "
                          f"Extract the visible trade facts as JSON."},
                 *image_blocks,
             ]},
@@ -266,12 +300,47 @@ done well when it's true.
 
 Return STRICT JSON, no prose, no fences:
 {
-  "rule_results": [{"rule_id": int, "text": string, "passed": bool}],
+  "rule_results": [{"rule_id": int, "text": string, "verifiable": bool, "passed": bool}],
   "coach_note": string,   // 1-2 sentences, plain and direct
   "did_well": string      // one genuine positive, or "" if none
 }
-Evaluate every rule you are given. If the evidence for a rule — in the chart \
-or the data — is not present, mark it not passed rather than assuming."""
+Evaluate every rule you are given.
+
+"verifiable" says whether this rule CAN be checked from what you were given \
+(the images, the extracted trade data, and the trader's note). Set it to \
+false ONLY for rules about things a screenshot cannot show and the note does \
+not state: account-level facts (risk as a % of the account when no risk \
+figure is visible, demo vs live account), behavior across a day (how many \
+trades taken today, a daily loss limit), news/economic-calendar timing, or \
+time-of-day/session when no clock is visible. For a non-verifiable rule set \
+"passed": false — that only means "unknown", it must NOT be read as the \
+trader breaking the rule. If the trader's note states a fact about such a \
+rule (e.g. "0.5% risk, first trade today, no news"), treat the note as \
+evidence: verifiable true, and passed according to what the note says. If \
+the evidence contradicts a rule, that is verifiable true, passed false.
+
+Never use verifiable=false for chart-structure or execution rules (trendline \
+breaks, candle closes, retests, stop/target placement, R:R, direction, \
+instrument): those you must judge by looking at the images. For those, if the \
+evidence is not present or does not match, mark verifiable true and passed \
+false rather than assuming.
+
+coach_note must not scold the trader about non-verifiable rules. If useful, \
+add a few words suggesting they mention such things in their note next time \
+(e.g. "couldn't verify your daily limit from the screenshot")."""
+
+
+def _normalize_verdict(verdict: dict) -> dict:
+    """Make every rule_result carry a boolean `verifiable` (default True, so a
+    model that omits it behaves exactly as before) and force passed=False on
+    anything non-verifiable — "unknown" must never read as a pass."""
+    for r in verdict.get("rule_results") or []:
+        if not isinstance(r, dict):
+            continue
+        r["verifiable"] = r.get("verifiable") is not False
+        if not r["verifiable"]:
+            r["passed"] = False
+    return verdict
 
 
 def check_rules(images: list[bytes], trade: dict, strategy_name: str, rules: list, context_note: str) -> dict:
@@ -305,7 +374,7 @@ def check_rules(images: list[bytes], trade: dict, strategy_name: str, rules: lis
                 {"type": "text",
                  "text": f"Setup: {strategy_name}\nRules:\n{rules_text}\n\n"
                          f"Trade data + note (JSON):\n{json.dumps(payload)}\n\n"
-                         f"{len(images)} image(s) of this same trade follow."},
+                         f"{_images_note(len(images))}"},
                 *image_blocks,
             ]},
         ],
@@ -315,7 +384,7 @@ def check_rules(images: list[bytes], trade: dict, strategy_name: str, rules: lis
     # the one place the exact verdict-model output is visible, logged
     # unconditionally so a bad verdict can be diagnosed from the server log.
     logger.info("check_rules raw model output: %r", raw_content)
-    return _strip_to_json(raw_content)
+    return _normalize_verdict(_strip_to_json(raw_content))
 
 
 SUGGEST_SETUP_SYSTEM = """You are a trading-discipline analyst. You are given an \
@@ -438,7 +507,7 @@ def suggest_setup(images: list[bytes], context_note: str, trade: dict | None = N
                          f"Extracted trade facts (direction/instrument are "
                          f"authoritative): "
                          f"{json.dumps({k: (trade or {}).get(k) for k in ('instrument', 'direction')})}. "
-                         f"{len(images)} image(s) of this same trade follow. "
+                         f"{_images_note(len(images))} "
                          f"Judge whether this is a repeatable setup."},
                 *image_blocks,
             ]},
@@ -456,7 +525,10 @@ XP_PER_RULE = 10
 
 def score_trade(verdict: dict) -> dict:
     """Turn a verdict into passed/total counts and XP. No cleverness in v1."""
-    results = verdict.get("rule_results", [])
+    # Rules that couldn't be checked from the screenshot (verifiable=False)
+    # are excluded from BOTH sides: they neither earn XP nor count against
+    # the trader. Older stored verdicts have no `verifiable` key -> counted.
+    results = [r for r in verdict.get("rule_results", []) if r.get("verifiable", True) is not False]
     passed = sum(1 for r in results if r.get("passed"))
     total = len(results)
     return {

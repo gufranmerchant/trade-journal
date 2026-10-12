@@ -1078,6 +1078,10 @@ button {
 }
 .rule-tile.pass .rule-tile-icon { background: var(--success-strong); }
 .rule-tile.fail .rule-tile-icon { background: var(--warning-strong); }
+.rule-tile.unverifiable { background: var(--bg); }
+.rule-tile.unverifiable .rule-tile-icon { background: var(--text-muted); }
+.rule-tile.unverifiable .rule-tile-text { color: var(--text-muted); }
+.rule-tile-sub { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
 .rule-tile-icon svg { width: 12px; height: 12px; }
 
 .rule-tile-text { font-size: 13px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
