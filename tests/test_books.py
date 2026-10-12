@@ -713,3 +713,14 @@ def test_dated_books_backfill_when_too_few_modern():
     vols = [_vol(1, 2024), _vol(4, 1987)]
     titles = [b["title"] for b in books.pick_competitors("cozy mystery novels", vols, fiction=True)]
     assert "Cozy Mystery Book 4" in titles
+
+
+def test_author_endorsement_lead_is_stripped():
+    info = {"description": "J.M. Hall, author of A Spoonful of Murder 'A sparkling confection to satisfy the mystery reader's appetite' Helena Dixon, bestselling author. Jodie Parker is back to solve another Cornish murder."}
+    out = books._description_for(info)
+    assert "J.M. Hall" not in out and "Jodie Parker" in out
+
+
+def test_author_of_in_real_premise_is_kept():
+    info = {"description": "Mia Gray, author of three cookbooks, finds a body in her bakery and sets out to catch the killer."}
+    assert books._description_for(info).startswith("Mia Gray")

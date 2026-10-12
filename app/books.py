@@ -349,6 +349,14 @@ _LEADING_STARS_RE = re.compile(r"^[\s★☆⭐*]*(?:[★☆⭐]{1,5}|\b[1-5](?:\
 _LEADING_QUOTE_RE = re.compile(r"^\s*[\"“‘'][^\"”’']{3,160}[\"”’']\s*(?:[–—-]\s*[^.!?]{0,60})?[.!?]?\s*")
 
 
+# "J.M. Hall, author of A Spoonful of Murder 'A sparkling...' Helena Dixon, bestselling..." - a pasted
+# author-endorsement. Only applies when the lead-in is followed by a quoted line, so a real premise that
+# merely mentions "author of" is left alone.
+_AUTHOR_ENDORSEMENT_RE = re.compile(
+    r"^\s*[A-Z][\w.'’-]*(?:\s+[A-Z][\w.'’-]*){0,3},?\s+(?:bestselling\s+)?author of\s+[^‘“\"]{1,80}?\s*[‘“\"'].{3,200}?[’”\"']"
+    r"\s+(?:[A-Z][\w.'’-]*\s+){1,3}[A-Z][\w.'’-]*,?\s*(?:bestselling\s+)?(?:author(?:\s+of\s+[^.!?]{1,60})?)?[.!?…]*\s*")
+
+
 def _strip_review_lead(text: str) -> str:
     """Drops a leading star rating and/or quoted review line; returns the original text if
     that would leave too little to describe the book."""
@@ -357,6 +365,7 @@ def _strip_review_lead(text: str) -> str:
         before = cleaned
         cleaned = _LEADING_STARS_RE.sub("", cleaned, count=1)
         cleaned = _LEADING_QUOTE_RE.sub("", cleaned, count=1)
+        cleaned = _AUTHOR_ENDORSEMENT_RE.sub("", cleaned, count=1)
         if cleaned == before:
             break
     cleaned = cleaned.strip()
