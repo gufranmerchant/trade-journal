@@ -36,7 +36,11 @@ import json
 import logging
 import re
 import base64
+import io
+import time
+import groq
 from groq import Groq
+from PIL import Image
 
 from app.config import GROQ_API_KEY
 
@@ -50,6 +54,67 @@ client = Groq(api_key=GROQ_API_KEY)
 # (every Log Trade call 500'd after that); its direct successor is
 # qwen3.8-27b, the same model keyword_research.py already uses.
 VISION_MODEL = "qwen/qwen3.8-27b"  # multimodal, used for all three passes
+
+
+# Groq's free tier caps this model at ~7,000 INPUT tokens per minute, and a
+# full-size screenshot costs ~2,500 tokens, so three raw screenshots in one
+# request (let alone the 2-3 calls one trade makes) blow through it (413).
+# Image tokens scale with pixel area, so downscale before sending: 1024px on
+# the long edge keeps TradingView price labels legible at roughly a quarter
+# of the cost, and re-encoding as JPEG also fixes the old hardcoded
+# "image/jpeg" label being wrong for PNG uploads.
+MAX_IMAGE_EDGE = 1024
+
+
+def _prepare_image(img: bytes) -> bytes:
+    """Downscale + JPEG-encode one screenshot. Falls back to the original
+    bytes if it can't be decoded, so a odd file never makes things worse."""
+    try:
+        with Image.open(io.BytesIO(img)) as im:
+            im.load()
+            if im.mode in ("RGBA", "LA", "P"):
+                im = im.convert("RGBA")
+                bg = Image.new("RGB", im.size, (255, 255, 255))
+                bg.paste(im, mask=im.split()[-1])
+                im = bg
+            else:
+                im = im.convert("RGB")
+            im.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE), Image.LANCZOS)
+            out = io.BytesIO()
+            im.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue()
+    except Exception:
+        logger.warning("could not downscale screenshot; sending original", exc_info=True)
+        return img
+
+
+def _image_blocks(images: list[bytes]) -> list[dict]:
+    return [
+        {"type": "image_url",
+         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(_prepare_image(img)).decode()}"}}
+        for img in images
+    ]
+
+
+def _create(**kwargs):
+    """chat.completions.create with a short wait-and-retry on a per-minute
+    rate limit (429) — one trade makes 2-3 sequential calls, so the second can
+    land inside the same minute window as the first. Waits are capped so a
+    request never hangs for long; anything else (incl. 413 request-too-large)
+    is raised as before."""
+    for attempt in range(3):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except groq.RateLimitError as e:
+            if attempt == 2:
+                raise
+            wait = 8
+            try:
+                wait = min(20, max(2, float(e.response.headers.get("retry-after", 8)) + 1))
+            except Exception:
+                pass
+            logger.warning("Groq rate limit (429); waiting %.0fs then retrying (attempt %d)", wait, attempt + 1)
+            time.sleep(wait)
 
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?(</think>|$)", re.DOTALL)
@@ -146,12 +211,8 @@ def parse_screenshot(images: list[bytes], context_note: str) -> dict:
     -> structured fields. See PARSE_SYSTEM for the source-priority rule when
     more than one image is given (broker/platform numbers over charting-tool
     numbers)."""
-    image_blocks = [
-        {"type": "image_url",
-         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"}}
-        for img in images
-    ]
-    resp = client.chat.completions.create(
+    image_blocks = _image_blocks(images)
+    resp = _create(
         model=VISION_MODEL,
         temperature=0,
         # This is a structured-extraction task, not something that benefits
@@ -223,11 +284,7 @@ def check_rules(images: list[bytes], trade: dict, strategy_name: str, rules: lis
     VERDICT_SYSTEM for the same charting-tool-vs-broker source priority used
     in parse_screenshot when more than one image is given.
     """
-    image_blocks = [
-        {"type": "image_url",
-         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"}}
-        for img in images
-    ]
+    image_blocks = _image_blocks(images)
     rules_text = "\n".join(f'- (id {r["id"]}) {r["text"]}' for r in rules)
     payload = {
         "setup": strategy_name,
@@ -235,7 +292,7 @@ def check_rules(images: list[bytes], trade: dict, strategy_name: str, rules: lis
         "trader_note": context_note,
         "rules": rules,
     }
-    resp = client.chat.completions.create(
+    resp = _create(
         model=VISION_MODEL,
         temperature=0.2,
         # Same reasoning_effort choice as parse_screenshot, and for the same
@@ -368,12 +425,8 @@ def suggest_setup(images: list[bytes], context_note: str, trade: dict | None = N
     a drafted repeatable-setup name/rules, or an honest "not a setup"
     verdict. Single-trade version: this judgment isn't persisted or reused
     across trades."""
-    image_blocks = [
-        {"type": "image_url",
-         "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img).decode()}"}}
-        for img in images
-    ]
-    resp = client.chat.completions.create(
+    image_blocks = _image_blocks(images)
+    resp = _create(
         model=VISION_MODEL,
         temperature=0.2,
         reasoning_effort="none",

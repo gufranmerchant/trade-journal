@@ -7,11 +7,12 @@ pyjwt[crypto]==2.13.0
 httpx==0.28.1
 psycopg2-binary==2.9.12
 alembic==1.19.1
+pillow==12.3.0
 
 # Transitive dependencies of the above, pinned exactly so a Railway rebuild
 # can't silently pick up a newer version. Excludes fastapi[standard]'s
 # cloud-CLI/deploy tooling (fastapi-cli, fastapi-cloud-cli, sentry-sdk,
-# pillow, rich, typer, etc.) and other extras (email-validator,
+# rich, typer, etc.) and other extras (email-validator,
 # pydantic-settings, pydantic-extra-types, Jinja2) — none of these are
 # imported by this app, which only runs via `uvicorn app.main:app`.
 annotated-doc==0.0.4
