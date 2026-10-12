@@ -47,6 +47,7 @@
   let dashboardDirty = false;
   let lastLoggedTradeId = null;
   let lastOffPlanSuggestion = null; // {name, rules} from the most recent off-plan result, or null
+  let lastAltStrategy = null; // {name, why, rules} alternative from the most recent off-plan result, or null
   let suggestionSourceTradeId = null; // trade id to retroactively link once the suggested strategy saves, or null
 
   // ---- Strategy screen state ----
@@ -855,6 +856,7 @@
     lastOffPlanSuggestion = null;
 
     const suggestion = trade.is_off_plan ? trade.setup_suggestion : null;
+    renderAltStrategy(suggestion && suggestion.alternative);
     if (!suggestion) {
       card.classList.add("hidden");
       rulesEl.innerHTML = "";
@@ -883,6 +885,27 @@
       saveBtn.classList.add("hidden");
     }
     card.classList.remove("hidden");
+  }
+
+  // Optional "Alternative strategy" dropdown inside the suggestion card — a
+  // related, standard strategy that is NOT what the trader did. Collapsed by
+  // default; saving it never re-links the trade (see click handler below).
+  function renderAltStrategy(alt) {
+    const details = el("altStrategyDetails");
+    lastAltStrategy = null;
+    details.open = false;
+    if (!alt || !alt.name || !Array.isArray(alt.rules) || alt.rules.length === 0) {
+      details.classList.add("hidden");
+      return;
+    }
+    lastAltStrategy = { name: alt.name, why: alt.why || "", rules: alt.rules };
+    el("altStrategyName").textContent = alt.name;
+    el("altStrategyWhy").textContent = alt.why || "";
+    el("altStrategyWhy").classList.toggle("hidden", !alt.why);
+    el("altStrategyRules").innerHTML = alt.rules
+      .map((r) => `<div class="suggested-rule-item">${escapeHtml(r.text)}</div>`)
+      .join("");
+    details.classList.remove("hidden");
   }
 
   function renderResult(trade, strategyName) {
@@ -992,6 +1015,15 @@
       // handleSaveStrategy to retroactively link this trade once the
       // suggested strategy saves.
       suggestionSourceTradeId = lastLoggedTradeId;
+    });
+
+    el("saveAltStrategyBtn").addEventListener("click", () => {
+      if (!lastAltStrategy) return;
+      strategyReturnView = "log";
+      openNewStrategyScreenFromSuggestion(lastAltStrategy.name, lastAltStrategy.rules);
+      // Deliberately NOT setting suggestionSourceTradeId: the trade did not
+      // follow this strategy, so it must not be retroactively linked to it.
+      suggestionSourceTradeId = null;
     });
 
     el("logBackBtn").addEventListener("click", async () => {

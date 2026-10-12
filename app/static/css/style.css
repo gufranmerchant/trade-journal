@@ -1131,6 +1131,29 @@ button {
 
 #setupSuggestionCard .cta-button { margin-top: 12px; }
 
+.alt-strategy {
+  margin-top: 14px;
+  border-top: 1px solid var(--card-border, rgba(128,128,128,0.25));
+  padding-top: 10px;
+}
+.alt-strategy > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  list-style: none;
+}
+.alt-strategy > summary::-webkit-details-marker { display: none; }
+.alt-strategy > summary::after { content: " \25BE"; }
+.alt-strategy[open] > summary::after { content: " \25B4"; }
+.alt-strategy-body { margin-top: 10px; }
+.alt-strategy-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.alt-strategy-why { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+.alt-strategy-note { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }
+#altStrategyDetails .secondary-button { margin-top: 12px; width: 100%; }
+
 .result-actions {
   display: flex;
   flex-direction: column;

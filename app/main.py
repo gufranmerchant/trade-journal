@@ -503,7 +503,7 @@ async def log_trade(
             # failure here must never block logging the off-plan trade
             # itself, so swallow it and just show no suggestion.
             try:
-                setup_suggestion = ai.suggest_setup(images, context_note)
+                setup_suggestion = ai.suggest_setup(images, context_note, parsed)
             except ai.AIResponseError:
                 setup_suggestion = None
             except Exception:

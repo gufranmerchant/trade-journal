@@ -112,6 +112,20 @@ price level, NOT profit or loss, and must NEVER be used for pnl_usd even if \
 it is the largest or only dollar figure visible on the chart. If no line is \
 explicitly labeled as closed/realized PnL, use null rather than substituting \
 any other dollar amount.
+TradingView's Long/Short position tool prints labels like "Stop: 29.782 \
+(0.719%) 2,978.2, Amount: 750" and "Target: 59.788 (1.443%) 5,978.8, Amount: \
+1501.88". The first number in those labels is a DISTANCE from entry (in \
+price units), followed by a percent and a tick count — it is NOT a price \
+level. Never put such a distance, a tick count, an Amount, or the Closed PnL \
+into entry_price, exit_price, sl_price or tp_price. Those four fields are \
+absolute prices that must be read against the chart's price axis (the \
+right-hand scale) at the entry line / stop edge / target edge of the \
+position box, or taken from a broker screenshot. If you cannot read a price \
+level against the axis with confidence, use null — a blank is better than a \
+wrong number. Do not use the current-price tag or the Buy/Sell quote \
+buttons as the entry price. Direction comes from the position tool's colors \
+and layout (stop above entry = short, stop below entry = long) or the \
+trader's note.
 Use null for anything not clearly visible. Never guess.
 If more than one image is provided, they are all of the SAME trade, not \
 different trades — one may be a charting tool (e.g. TradingView) showing \
@@ -269,24 +283,71 @@ break-and-retest, a liquidity sweep, a specific candle pattern, a defined \
 risk rule) — not just "price went up and I bought."
 
 Return STRICT JSON, no prose, no fences. If it is NOT a repeatable setup:
-{"is_setup": false}
+{"is_setup": false, "alternative": <alternative or null>}
 If it IS a repeatable setup:
 {
   "is_setup": true,
   "suggested_name": string,
-  "suggested_rules": [{"id": int, "text": string}, ...]
+  "suggested_rules": [{"id": int, "text": string}, ...],
+  "alternative": <alternative or null>
 }
+"alternative" is a SEPARATE, clearly-labelled extra: a well-known, standard \
+strategy that is related to this trade but is NOT what the trader did, built \
+on the same fundamentals visible in the chart or note (e.g. a trendline \
+break trade -> a "Trendline Break + Retest" entry; a range breakout -> a \
+"Breakout Retest"). Shape:
+{"name": string, "why": string, "rules": [{"id": int, "text": string}, ...]}
+"why" is ONE sentence naming the shared fundamental (e.g. "Same trendline-\
+break idea, but waits for a retest before entering."). "rules" are 3-5 \
+checkable lines. Keep the same instrument and direction as the trade unless \
+the strategy is naturally direction-neutral. The alternative must differ \
+from the primary suggestion (a genuinely different entry/confirmation \
+approach, not a rewording). When is_setup is false (impulse/discretionary), \
+still offer an alternative ONLY if the chart or note shows an identifiable \
+fundamental (a trendline, a key level, a range, a clear structure); if \
+there is nothing concrete to build on, set "alternative" to null. Never \
+present the alternative as something the trader did.
 suggested_name should be short (e.g. "Liquidity Sweep Reversal"). \
 suggested_rules should be 2-5 checkable lines describing what the trader \
-actually did, not generic trading advice."""
+actually did, not generic trading advice.
+
+The rules must describe THIS trade: the same direction (a short must not \
+produce long rules, and vice versa) and the same logic the trader states in \
+their note (e.g. "broke the upward trendline, took the short" -> rules about \
+a trendline break and a short entry). Take the direction from the extracted \
+trade facts and the note, not from where support/resistance zones happen to \
+be drawn. Never substitute a textbook setup (generic support-zone bounce, \
+hammer/engulfing candle) for what the trade actually shows. If the trader's \
+note and the chart don't support a specific repeatable setup, return \
+{"is_setup": false}."""
+
+
+def _normalize_alternative(raw) -> dict | None:
+    """Same defensive coercion for the optional "alternative strategy" —
+    anything half-formed (no name, no rules) is dropped, never shown."""
+    if not isinstance(raw, dict):
+        return None
+    name = str(raw.get("name") or "").strip()
+    why = str(raw.get("why") or "").strip()
+    rules = []
+    for r in raw.get("rules") or []:
+        text = str((r or {}).get("text") or "").strip()
+        if text:
+            rules.append({"id": len(rules) + 1, "text": text})
+    if not name or not rules:
+        return None
+    return {"name": name, "why": why, "rules": rules}
 
 
 def _normalize_setup_suggestion(parsed: dict) -> dict:
     """Defensive coercion — the model's output feeds straight into a
     strategy-creation prefill, so a half-formed "setup" (no name, no rules)
-    is treated as no suggestion at all rather than shown as one."""
+    is treated as no suggestion at all rather than shown as one. The
+    alternative strategy is normalized independently: it survives even when
+    the primary suggestion is dropped or declined."""
+    alternative = _normalize_alternative(parsed.get("alternative"))
     if not parsed.get("is_setup"):
-        return {"is_setup": False}
+        return {"is_setup": False, "alternative": alternative}
 
     name = str(parsed.get("suggested_name") or "").strip()
     rules = []
@@ -296,12 +357,13 @@ def _normalize_setup_suggestion(parsed: dict) -> dict:
             rules.append({"id": len(rules) + 1, "text": text})
 
     if not name or not rules:
-        return {"is_setup": False}
+        return {"is_setup": False, "alternative": alternative}
 
-    return {"is_setup": True, "suggested_name": name, "suggested_rules": rules}
+    return {"is_setup": True, "suggested_name": name, "suggested_rules": rules,
+            "alternative": alternative}
 
 
-def suggest_setup(images: list[bytes], context_note: str) -> dict:
+def suggest_setup(images: list[bytes], context_note: str, trade: dict | None = None) -> dict:
     """Off-plan-only advisory pass — 1-3 images of the trade + note -> either
     a drafted repeatable-setup name/rules, or an honest "not a setup"
     verdict. Single-trade version: this judgment isn't persisted or reused
@@ -320,6 +382,9 @@ def suggest_setup(images: list[bytes], context_note: str) -> dict:
             {"role": "user", "content": [
                 {"type": "text",
                  "text": f"Trader's note about this trade: {context_note!r}. "
+                         f"Extracted trade facts (direction/instrument are "
+                         f"authoritative): "
+                         f"{json.dumps({k: (trade or {}).get(k) for k in ('instrument', 'direction')})}. "
                          f"{len(images)} image(s) of this same trade follow. "
                          f"Judge whether this is a repeatable setup."},
                 *image_blocks,
