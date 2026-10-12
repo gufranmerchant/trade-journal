@@ -231,6 +231,10 @@ wrong number. Do not use the current-price tag or the Buy/Sell quote \
 buttons as the entry price. Direction comes from the position tool's colors \
 and layout (stop above entry = short, stop below entry = long) or the \
 trader's note.
+The O / H / L / C figures in the chart's top-left header (e.g. "O4,209.020 \
+H4,215.790 L4,208.685 C4,212.935"), the live Sell/Buy quote buttons, and the \
+current-price tag on the right axis belong to the CURRENT candle, not to the \
+trade. Never use them as entry_price, exit_price, sl_price or tp_price.
 Use null for anything not clearly visible. Never guess.
 If more than one image is provided, they are all of the SAME trade, not \
 different trades — one may be a charting tool (e.g. TradingView) showing \
@@ -244,6 +248,39 @@ or annotations rather than what was actually filled. Use a charting-tool \
 image only to fill in a field that no broker/platform image shows at all. \
 Never average or blend a number across images — pick the single most \
 trustworthy source for each field using this priority."""
+
+
+def _sanity_check_prices(parsed: dict) -> dict:
+    """Blank price fields that are logically impossible for the trade, rather
+    than show a confidently wrong number. Only catches contradictions (e.g.
+    entry == exit on a trade with profit, a short whose exit is above entry
+    while PnL is positive, a stop on the profitable side); a wrong-but-
+    plausible price still gets through, so the editable detail screen stays
+    the safety net."""
+    direction = parsed.get("direction")
+    entry, exit_ = parsed.get("entry_price"), parsed.get("exit_price")
+    sl, tp = parsed.get("sl_price"), parsed.get("tp_price")
+    pnl = parsed.get("pnl_usd")
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    if direction in ("long", "short") and num(entry) and num(exit_) and num(pnl) and pnl != 0:
+        sign = 1 if direction == "long" else -1      # +1: profit means exit > entry
+        moved_up = exit_ > entry
+        moved_down = exit_ < entry
+        ok = (moved_up if sign * pnl > 0 else moved_down)
+        if not ok:
+            logger.warning("parse sanity: entry/exit contradict %s pnl=%s (%s, %s) — blanking", direction, pnl, entry, exit_)
+            parsed["entry_price"] = parsed["exit_price"] = None
+            entry = exit_ = None
+
+    if direction in ("long", "short") and num(entry):
+        if num(sl) and ((direction == "long" and sl >= entry) or (direction == "short" and sl <= entry)):
+            logger.warning("parse sanity: stop on wrong side of entry — blanking sl")
+            parsed["sl_price"] = None
+        if num(tp) and ((direction == "long" and tp <= entry) or (direction == "short" and tp >= entry)):
+            logger.warning("parse sanity: target on wrong side of entry — blanking tp")
+            parsed["tp_price"] = None
+    return parsed
 
 
 def parse_screenshot(images: list[bytes], context_note: str) -> dict:
@@ -275,7 +312,7 @@ def parse_screenshot(images: list[bytes], context_note: str) -> dict:
     # visible; logged unconditionally so a bad parse can always be diagnosed
     # from the server log without turning on debug logging after the fact.
     logger.info("parse_screenshot raw model output: %r", raw_content)
-    return _strip_to_json(raw_content)
+    return _sanity_check_prices(_strip_to_json(raw_content))
 
 
 VERDICT_SYSTEM = """You are a trading-discipline coach. You are given one or \
