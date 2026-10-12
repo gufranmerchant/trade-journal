@@ -46,9 +46,10 @@ client = Groq(api_key=GROQ_API_KEY)
 
 # llama-4-scout-17b-16e-instruct and llama-3.3-70b-versatile were both
 # deprecated by Groq (2026-06-17, shut off by August); migrated to their
-# recommended replacements. qwen3.6-27b is Groq's other multimodal option
-# besides the now-deprecated llama-4 vision models.
-VISION_MODEL = "qwen/qwen3.6-27b"  # vision-capable, used for both passes now
+# recommended replacements. Groq then shut down qwen3.6-27b on 2026-09-14
+# (every Log Trade call 500'd after that); its direct successor is
+# qwen3.8-27b, the same model keyword_research.py already uses.
+VISION_MODEL = "qwen/qwen3.8-27b"  # multimodal, used for all three passes
 
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?(</think>|$)", re.DOTALL)

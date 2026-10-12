@@ -461,6 +461,12 @@ async def log_trade(
         parsed = ai.parse_screenshot(images, context_note)
     except ai.AIResponseError:
         raise HTTPException(502, "Couldn't read that screenshot — try again or use a clearer image.")
+    except Exception:
+        # Provider-side failure (rate limit, timeout, model outage, oversized
+        # payload) — log the real traceback and give the user a retryable
+        # message instead of a bare 500.
+        logging.getLogger(__name__).exception("parse_screenshot failed (provider error)")
+        raise HTTPException(503, "The AI service had a hiccup reading that screenshot — please try again in a moment.")
 
     with Session(engine) as s:
         strategy = None
@@ -500,6 +506,9 @@ async def log_trade(
                 setup_suggestion = ai.suggest_setup(images, context_note)
             except ai.AIResponseError:
                 setup_suggestion = None
+            except Exception:
+                logging.getLogger(__name__).exception("suggest_setup failed (provider error)")
+                setup_suggestion = None
         else:
             # Pass 2 — verdict against the user's own rules (images included
             # so chart-structure rules can be checked against them, not
@@ -508,6 +517,9 @@ async def log_trade(
                 verdict = ai.check_rules(images, parsed, strategy.name, strategy.rules, context_note)
             except ai.AIResponseError:
                 raise HTTPException(502, "Couldn't check this trade against your rules — try again.")
+            except Exception:
+                logging.getLogger(__name__).exception("check_rules failed (provider error)")
+                raise HTTPException(503, "The AI service had a hiccup checking this trade — please try again in a moment.")
             score = ai.score_trade(verdict)
             trade.rule_results = verdict.get("rule_results", [])
             trade.rules_passed = score["rules_passed"]
