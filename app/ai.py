@@ -197,6 +197,12 @@ STRICT JSON, no prose, no code fences, with exactly these keys:
   "session": string or null,
   "traded_at": string or null
 }
+risk_pct is ONLY risk as a percentage of the ACCOUNT, and only when it is \
+explicitly stated as such (e.g. "Risk: 0.5%", "risking 1% of balance"). The \
+percentage in brackets inside a TradingView Stop/Target label — e.g. "Stop: \
+29.782 (0.719%)" — is the PRICE distance from entry as a % of the entry \
+price, NOT account risk; never use it for risk_pct. If account risk is not \
+explicitly stated, use null.
 stated_rr is ONLY the risk/reward ratio when it is printed as text on the \
 chart itself (e.g. "Risk/reward ratio: 2.56", "R:R 1:2.5", "RR: 3.1") — read \
 the number straight off that label. Do not compute or infer it from prices; \
@@ -324,6 +330,23 @@ breaks, candle closes, retests, stop/target placement, R:R, direction, \
 instrument): those you must judge by looking at the images. For those, if the \
 evidence is not present or does not match, mark verifiable true and passed \
 false rather than assuming.
+
+CONDITIONAL rules apply only when their condition happens. A rule phrased \
+"if X, then Y", or "exit at market on a close back across the safety line", \
+or "high-risk setup: halve the size" is NOT broken just because X never \
+occurred in this trade (e.g. the trade simply reached its take-profit before \
+price ever closed back across the safety line). If the condition did not \
+occur, mark the rule passed. Mark it failed only when the condition DID occur \
+and the trader did not follow it.
+
+Never treat the percentage inside a TradingView Stop/Target label (e.g. \
+"Stop: 29.782 (0.719%)") as account risk — it is the price distance from \
+entry. Judge account-risk rules only from an explicit risk figure in the \
+trade data or the trader's note; otherwise the rule is non-verifiable.
+
+Keep the coach_note consistent with your rule_results: do not say you could \
+not verify a rule you marked verifiable and passed. Refer to rules by their \
+wording, never by number or id.
 
 coach_note must not scold the trader about non-verifiable rules. If useful, \
 add a few words suggesting they mention such things in their note next time \
