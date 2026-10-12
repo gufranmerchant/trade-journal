@@ -639,3 +639,47 @@ def test_each_ranked_candidate_logs_one_audit_line_and_filtered_ones_do_not(now2
     assert "year=?" in by_title["Undated Cozy Mystery"] and "recency=0.40" in by_title["Undated Cozy Mystery"]
     assert all("topic='cozy mystery'" in l and re.search(r"rank=\d+\.\d\d rel=1\.00", l) for l in lines)
     assert "Gardening" not in caplog.text
+
+
+
+# ------------------------------------------------------------------ bundles & genre clashes
+
+def test_omnibus_and_box_set_titles_are_not_competitors():
+    good = vol("The Library Murders", ["A. Writer"], COZY_DESC, ["Cozy Mystery"])
+    volumes = [
+        good,
+        vol("The Collected Works of Fergus Hume: 22 Thriller Novels", ["Fergus Hume"], COZY_DESC, ["Fiction"], year="2023"),
+        vol("BRITISH MYSTERIES - Fergus Hume Collection: 21 Thriller Novels in One Volume", ["Fergus Hume"], COZY_DESC, ["Fiction"], year="2017"),
+        vol("Village Murders Box Set", ["B. Writer"], COZY_DESC, ["Cozy Mystery"]),
+        vol("The Complete Mysteries of Miss Marple", ["C. Writer"], COZY_DESC, ["Cozy Mystery"]),
+    ]
+    assert [b["title"] for b in books.pick_competitors("cozy mystery novels", volumes)] == ["The Library Murders"]
+
+
+def test_bundle_filter_does_not_catch_ordinary_titles():
+    ok = [vol(t, [f"Author {i}"], COZY_DESC, ["Cozy Mystery"]) for i, t in enumerate([
+        "Murder at 221 Baker Street", "Twelve Dead Hens", "The 13th Tea Party Murder", "Seven Sisters Mystery"])]
+    assert len(books.pick_competitors("cozy mystery", ok)) == 4
+
+
+def test_cozy_topic_rejects_thriller_and_noir_neighbours():
+    volumes = [
+        vol("Quiet Village Crime", ["I. Ndie"], COZY_DESC, ["Fiction / Mystery & Detective / Cozy"]),
+        vol("The Last Alibi", ["T. Writer"], "A mystery.", ["Fiction / Thrillers / Psychological"]),
+        vol("Gripping Serial Killer Thriller", ["U. Writer"], "A cozy mystery fan's nightmare.", ["Fiction / Mystery"]),
+        vol("Dark Streets", ["V. Writer"], "A mystery.", ["Fiction / Mystery & Detective / Hard-Boiled"]),
+    ]
+    assert [b["title"] for b in books.pick_competitors("cozy mystery novels", volumes)] == ["Quiet Village Crime"]
+
+
+def test_thriller_topic_keeps_thrillers_and_rejects_cozies():
+    volumes = [
+        vol("The Last Alibi", ["T. Writer"], "A psychological thriller.", ["Fiction / Thrillers / Psychological"]),
+        vol("Quiet Village Crime", ["I. Ndie"], "A thriller-ish mystery.", ["Fiction / Mystery & Detective / Cozy"]),
+    ]
+    assert [b["title"] for b in books.pick_competitors("psychological thriller", volumes)] == ["The Last Alibi"]
+
+
+def test_other_genre_topics_are_unaffected_by_the_clash_rule():
+    volumes = [vol("Dragon Court", ["F. Writer"], "An epic fantasy with dragons.", ["Fiction / Fantasy / Epic"])]
+    assert len(books.pick_competitors("epic fantasy novels", volumes)) == 1

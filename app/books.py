@@ -257,6 +257,17 @@ _DERIVATIVE_TITLE_RE = re.compile(
 )
 
 
+# Omnibus editions, box sets and "collected works" (often public-domain reissues like "The Collected
+# Works of Fergus Hume: 22 Thriller Novels") match a genre search on word overlap alone but are a
+# bundle of many books, not a single title a new book competes against.
+_BUNDLE_TITLE_RE = re.compile(
+    r"\b(collected works|complete works|complete (?:novels|stories|mysteries|collection)|"
+    r"box(?:ed)? ?set|omnibus|anthology|in one volume|"
+    r"\d{1,3}\s+(?:[\w'-]+\s+){0,2}(?:novels|books|stories|mysteries|classics))\b",
+    re.IGNORECASE,
+)
+
+
 def _stem(word: str) -> str:
     for suffix in ("ers", "er", "ies", "es", "s", "ing"):
         if word.endswith(suffix) and len(word) - len(suffix) >= 4:
@@ -324,6 +335,8 @@ def _book_from_volume(volume: dict) -> dict | None:
         return None
     if _DERIVATIVE_TITLE_RE.search(title) or _DERIVATIVE_TITLE_RE.search(info.get("subtitle") or ""):
         return None
+    if _BUNDLE_TITLE_RE.search(title) or _BUNDLE_TITLE_RE.search(info.get("subtitle") or ""):
+        return None  # omnibus / box set / "collected works": a bundle of many books, not a title to compete with
     rating, count = info.get("averageRating"), info.get("ratingsCount") or 0
     if isinstance(rating, (int, float)) and rating < 3.0 and count >= 5:
         return None  # enough readers to call it poorly received
@@ -389,7 +402,30 @@ _ABOUT_FICTION_SUBTITLE_RE = re.compile(
 _ABOUT_FICTION_TITLE_RE = re.compile(r"\b(criticism|essays on|encyclopedia|quotations)\b", re.I)
 
 
+# A specific sub-genre in the topic rules out neighbours that share its words but not its feel:
+# "mystery" alone passes relevance for a thriller, which is not a cozy-mystery competitor (and a cozy
+# is not a thriller competitor). Judged on title/subtitle/categories only - descriptions quote
+# reviews and mention other genres in passing.
+_COZY_TOPIC_RE = re.compile(r"\b(cozy|cosy)\b", re.I)
+_COZY_CLASH_RE = re.compile(
+    r"\b(thrillers?|psychological suspense|serial killers?|noir|hard-?boiled|horror|"
+    r"police procedurals?|legal thrillers?|techno-?thrillers?|espionage)\b", re.I)
+_THRILLER_TOPIC_RE = re.compile(r"\b(thrillers?|suspense|noir|hard-?boiled|horror)\b", re.I)
+_THRILLER_CLASH_RE = re.compile(r"\b(cozy|cosy)\b", re.I)
+
+
+def _genre_clash(topic: str, info: dict) -> bool:
+    text = " ".join([info.get("title") or "", info.get("subtitle") or "", *[str(c) for c in (info.get("categories") or [])]])
+    if _COZY_TOPIC_RE.search(topic) and not _COZY_CLASH_RE.search(topic):
+        return bool(_COZY_CLASH_RE.search(text))
+    if _THRILLER_TOPIC_RE.search(topic) and not _THRILLER_CLASH_RE.search(topic):
+        return bool(_THRILLER_CLASH_RE.search(text))
+    return False
+
+
 def _category_ok(topic: str, info: dict, fiction: bool | None) -> bool:
+    if _genre_clash(topic, info):
+        return False
     if fiction and (_ABOUT_FICTION_SUBTITLE_RE.search(info.get("subtitle") or "")
                     or _ABOUT_FICTION_TITLE_RE.search(info.get("title") or "")):
         return False
